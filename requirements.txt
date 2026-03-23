@@ -1,0 +1,17 @@
+pandas
+numpy
+scikit-learn
+matplotlib
+seaborn
+tqdm
+requests
+python-dotenv
+openaq
+joblib
+shap
+httpx
+pyarrow
+fastapi
+uvicorn
+statsmodels
+optuna

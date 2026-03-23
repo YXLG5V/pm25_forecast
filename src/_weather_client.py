@@ -1,0 +1,93 @@
+# ======================================================
+# WEATHER_CLIENT.PY
+# Unified weather access (history + forecast)
+# ======================================================
+
+import requests
+import pandas as pd
+from datetime import datetime, timedelta, UTC
+
+LAT = 47.6875
+LON = 17.6504
+
+
+# ======================================================
+# COMMON PARSER
+# ======================================================
+
+def _parse_weather_json(data):
+
+    df = pd.DataFrame({
+        "datetime": data["hourly"]["time"],
+        "temperature": data["hourly"]["temperature_2m"],
+        "humidity": data["hourly"]["relative_humidity_2m"],
+        "wind_speed": data["hourly"]["wind_speed_10m"],
+        "precipitation": data["hourly"]["precipitation"],
+    })
+
+    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+
+    return df.set_index("datetime")
+
+
+# ======================================================
+# WEATHER FORECAST (FUTURE)
+# ======================================================
+
+def fetch_weather_forecast():
+
+    print("Downloading weather forecast...")
+
+    url = "https://api.open-meteo.com/v1/forecast"
+
+    params = dict(
+        latitude=LAT,
+        longitude=LON,
+        hourly=[
+            "temperature_2m",
+            "relative_humidity_2m",
+            "wind_speed_10m",
+            "precipitation"
+        ],
+        forecast_days=2,
+        timezone="UTC"
+    )
+
+    data = requests.get(url, params=params).json()
+
+    return _parse_weather_json(data)
+
+
+# ======================================================
+# WEATHER HISTORY (CRITICAL FOR ML CONSISTENCY)
+# ======================================================
+
+def fetch_weather_history(hours=24):
+
+    print("Downloading historical weather...")
+
+    end = datetime.now(UTC)
+    start = end - timedelta(hours=hours)
+
+    url = "https://archive-api.open-meteo.com/v1/archive"
+
+    params = dict(
+        latitude=LAT,
+        longitude=LON,
+        start_date=start.date().isoformat(),
+        end_date=end.date().isoformat(),
+        hourly=[
+            "temperature_2m",
+            "relative_humidity_2m",
+            "wind_speed_10m",
+            "precipitation"
+        ],
+        timezone="UTC"
+    )
+
+    data = requests.get(url, params=params).json()
+
+    df = _parse_weather_json(data)
+
+    # csak a szükséges időablak
+    return df.loc[start:end]
