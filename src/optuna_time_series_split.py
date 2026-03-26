@@ -1,6 +1,5 @@
 # =========================
 # OPTUNA + TimeSeriesSplit
-# HistGradientBoostingRegressor
 # =========================
 
 import optuna
@@ -15,26 +14,34 @@ from sklearn.model_selection import TimeSeriesSplit
 # =========================
 # LOAD DATA
 # =========================
-df = pd.read_parquet("../data/preprocessed/preprocessed_with_FE.parquet")
+df = pd.read_parquet("./data/preprocessed/preprocessed_with_FE.parquet")
+FEATURES = joblib.load("./artifacts/features.pkl")
+LOCATION_MAPPING = joblib.load("./artifacts/location_mapping.pkl")
 
-df["pm25_next"] = df.groupby("location")["pm25"].shift(-1)
-df = df.dropna(subset=["pm25_next"])
+df["pm25_next"] = (
+    df.groupby("location")["pm25"].shift(-1)
+)
 
-lag_columns = [
-    "pm25_lag1","pm25_lag3","pm25_lag6","pm25_lag24",
-    "pm25_roll6","pm25_roll24","pm25_trend_3h",
-    "pm25_std_12h","temp_change_3h","humidity_change_3h",
-    "wind_change_3h","stagnation_hours_6h"
-]
-df = df.dropna(subset=lag_columns)
-
-if "datetime" in df.columns:
-    df = df.set_index("datetime")
-
-df = df.sort_index()
-
-FEATURES = joblib.load("../artifacts/features.pkl")
 TARGET = "pm25_next"
+
+columns = [
+    "pm25_next",
+    "pm25_lag1",
+    "pm25_lag3",
+    "pm25_lag6",
+    "pm25_lag24",
+    "pm25_roll6",
+    "pm25_roll24",
+    "pm25_trend_3h",
+    "pm25_std_12h",
+    "temp_change_3h",
+    "humidity_change_3h",
+    "wind_change_3h",
+    "stagnation_hours_6h"
+]
+
+df = df.dropna(subset=columns)
+
 
 split_date = "2025-09-01"
 
@@ -145,6 +152,6 @@ print("Test R2 :", r2)
 # =========================
 # SAVE MODEL
 # =========================
-joblib.dump(best_model, "../models/model_optuna_tscv.pkl")
+joblib.dump(best_model, "./models/model_optuna.pkl")
 
 print("Optimized model saved.")

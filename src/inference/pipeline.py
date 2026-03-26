@@ -12,8 +12,8 @@ class ForecastPipeline:
     def build_history(self, pollutants, weather_hist):
 
         return build_base_dataset(
-            pollution=pollutants.reset_index(),
-            weather=weather_hist.reset_index()
+            pollution=pollutants,
+            weather=weather_hist
         )
 
     def forecast(self, history, weather_fc, horizon):
@@ -30,15 +30,13 @@ class ForecastPipeline:
             future = history.iloc[-1:].copy()
             future["datetime"] = future_time
 
-            future["location_id"] = self.model.categories[future["location"].iloc[0]]
-
             # weather
-            idx = weather_fc.index.get_indexer(
-                [future_time],
-                method="nearest"
-            )[0]
+            weather_slice = weather_fc.loc[:future_time]
 
-            weather = weather_fc.iloc[idx]
+            if weather_slice.empty:
+                weather = weather_fc.iloc[-1]
+            else:
+                weather = weather_slice.iloc[-1]
 
             future["temperature"] = weather.temperature
             future["humidity"] = weather.humidity
@@ -50,19 +48,12 @@ class ForecastPipeline:
                 ["location", "datetime"]
             ).reset_index(drop=True)
 
-            df_feat_input = history.copy()
-            df_feat_input = df_feat_input.reset_index()
-            if "datetime" not in df_feat_input.columns:
-                df_feat_input = df_feat_input.rename(columns={"index": "datetime"})
+            df_features = build_features(history.copy(), fit=False)
 
-            df_features = build_features(df_feat_input)
-
-            row = df_features.loc[df_features.index == future_time]
-
-            if row.empty:
-                row = df_features.iloc[[-1]]
-
-            row = self.model.prepare_input(row)
+            if df_features.empty:
+                raise RuntimeError("Feature engineering returned empty dataframe")
+            
+            row = df_features.iloc[[-1]][self.model.features]
 
             pred = self.model.predict(row)[0]
 

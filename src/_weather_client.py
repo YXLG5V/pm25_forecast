@@ -7,10 +7,6 @@ import requests
 import pandas as pd
 from datetime import datetime, timedelta, UTC
 
-LAT = 47.6875
-LON = 17.6504
-
-
 # ======================================================
 # COMMON PARSER
 # ======================================================
@@ -34,15 +30,15 @@ def _parse_weather_json(data):
 # WEATHER FORECAST (FUTURE)
 # ======================================================
 
-def fetch_weather_forecast():
+def fetch_weather_forecast(lat, lon):
 
     print("Downloading weather forecast...")
 
     url = "https://api.open-meteo.com/v1/forecast"
 
     params = dict(
-        latitude=LAT,
-        longitude=LON,
+        latitude=lat,
+        longitude=lon,
         hourly=[
             "temperature_2m",
             "relative_humidity_2m",
@@ -62,7 +58,7 @@ def fetch_weather_forecast():
 # WEATHER HISTORY (CRITICAL FOR ML CONSISTENCY)
 # ======================================================
 
-def fetch_weather_history(hours=24):
+def fetch_weather_history(lat, lon, hours=24):
 
     print("Downloading historical weather...")
 
@@ -72,8 +68,8 @@ def fetch_weather_history(hours=24):
     url = "https://archive-api.open-meteo.com/v1/archive"
 
     params = dict(
-        latitude=LAT,
-        longitude=LON,
+        latitude=lat,
+        longitude=lon,
         start_date=start.date().isoformat(),
         end_date=end.date().isoformat(),
         hourly=[

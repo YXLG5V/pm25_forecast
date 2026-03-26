@@ -1,4 +1,4 @@
-from src._api_client import fetch_recent_pollutants
+from src._pollutant_client import fetch_station_pollutants
 from src._weather_client import (
     fetch_weather_history,
     fetch_weather_forecast
@@ -12,7 +12,7 @@ from .pipeline import ForecastPipeline
 class ForecastService:
     def run(self):
         return self.get_forecast()
-
+    
     def __init__(self, config):
 
         self.config = config
@@ -21,7 +21,7 @@ class ForecastService:
         artifacts = ModelArtifacts(
             model_path=config["model_path"],
             features_path=config["features_path"],
-            categories_path=config["categories_path"]
+            location_map=config["location_map"]
         )
 
         # --- model ---
@@ -34,20 +34,26 @@ class ForecastService:
 
         cfg = self.config
 
-        pollutants = fetch_recent_pollutants(
-            pm25_sensor_id=cfg["sensor_id"],
-            hours=cfg["lag_hours"] + 3
-        )
+        assert cfg["location_name"] in self.model.categories, \
+            f"Unknown location: {cfg['location_name']}"
 
-        pollutants["location"] = cfg["location_name"]
-        pollutants["latitude"] = cfg["lat"]
-        pollutants["longitude"] = cfg["lon"]
+        pollutants = fetch_station_pollutants(
+            location_name=cfg["location_name"],
+            hours=cfg["lag_hours"]
+        )
 
         weather_hist = fetch_weather_history(
+            cfg["lat"],
+            cfg["lon"],
             hours=cfg["lag_hours"] + 3
         )
 
-        weather_fc = fetch_weather_forecast()
+        weather_hist = weather_hist.reset_index()
+
+        weather_fc = fetch_weather_forecast(
+            cfg["lat"],
+            cfg["lon"]
+        )
 
         history = self.pipeline.build_history(
             pollutants,

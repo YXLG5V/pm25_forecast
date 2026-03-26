@@ -7,11 +7,11 @@ class ModelArtifacts:
         self,
         model_path,
         features_path,
-        categories_path
+        location_map
     ):
         self.model = joblib.load(model_path)
         self.features = joblib.load(features_path)
-        self.categories = joblib.load(categories_path)
+        self.categories = joblib.load(location_map)
 
     def info(self):
         return {

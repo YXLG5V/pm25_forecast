@@ -104,12 +104,12 @@ models = {
     
     "HistGB": Pipeline([
         ("model", HistGradientBoostingRegressor(
-            max_iter=323,
-            learning_rate=0.0798368301055767,
+            max_iter=365,
+            learning_rate=0.04211984714387256,
             max_depth=6,
-            min_samples_leaf=81,
-            l2_regularization=0.4004396597514025,
-            max_bins=219,
+            min_samples_leaf=62,
+            l2_regularization=0.42610860193308486,
+            max_bins=230,
             random_state=42
         ))
     ])

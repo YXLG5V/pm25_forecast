@@ -64,9 +64,11 @@ def resample_hourly(df):
 
     df_original = df.copy()
 
+    available_cols = [c for c in pollutant_cols if c in df_original.columns]
+
     # --- pollutáns ---
     df_poll = (
-        df_original[["location", "datetime"] + pollutant_cols]
+        df_original[["location", "datetime"] + available_cols]
         .set_index(["location", "datetime"])
         .groupby(level="location")
         .resample("1h", level="datetime")
@@ -105,7 +107,8 @@ def clean_pollutants(df):
     pollution_cols = ["no2", "pm10", "pm25", "so2"]
 
     for col in pollution_cols:
-        df.loc[df[col] < 0, col] = np.nan
+        if col in df.columns:
+            df.loc[df[col] < 0, col] = np.nan
 
     return df
 
@@ -128,7 +131,7 @@ def interpolate_station(df):
 
     # --- POLLUTÁNS interpoláció ---
     df = df.sort_values(["location", "datetime"])
-    cols_to_interp = ["pm25", "pm10", "no2", "so2"]
+    cols_to_interp = [c for c in ["pm25", "pm10", "no2", "so2"] if c in df.columns]
 
     df[cols_to_interp] = (
         df.groupby("location")[cols_to_interp]
@@ -144,6 +147,12 @@ def interpolate_station(df):
 # ============================================================
 
 def build_base_dataset(pollution, weather):
+
+    EXPECTED_POLLUTANTS = ["pm25", "pm10", "no2", "so2"]
+
+    for col in EXPECTED_POLLUTANTS:
+        if col not in pollution.columns:
+            pollution[col] = np.nan
 
     pollution = clean_locations(pollution)
 
