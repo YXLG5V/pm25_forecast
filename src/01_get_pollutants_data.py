@@ -10,8 +10,6 @@ from openaq import OpenAQ
 from openaq.shared.exceptions import RateLimitError
 import httpx
 
-from _utils import get_time_window
-
 
 # ======================================================
 # CONFIG
@@ -155,9 +153,7 @@ def fetch_sensor(sensor_info, start, end):
 # MAIN PIPELINE
 # ======================================================
 
-def fetch_all(days_back=365):
-
-    start, end = get_time_window(days_back)
+def fetch_all(start, end):
 
     print("TIME WINDOW:", start, "→", end)
 
@@ -187,9 +183,18 @@ def fetch_all(days_back=365):
 # MAIN
 # ======================================================
 
-if __name__ == "__main__":
+import argparse
 
-    df = fetch_all(days_back=730)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start_date", required=True)
+    parser.add_argument("--end_date", required=True)
+    args = parser.parse_args()
+
+    start = pd.to_datetime(args.start_date, utc=True)
+    end   = pd.to_datetime(args.end_date, utc=True)
+
+    df = fetch_all(start, end)
 
     output = "./data/raw/pollutants.csv"
     df.to_csv(output, index=False)

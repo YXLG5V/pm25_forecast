@@ -25,7 +25,7 @@ class ForecastService:
         )
 
         # --- model ---
-        self.model = PM25Model(artifacts)
+        self.model = artifacts
 
         # --- pipeline ---
         self.pipeline = ForecastPipeline(self.model)

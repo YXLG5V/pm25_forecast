@@ -15,3 +15,5 @@ fastapi
 uvicorn
 statsmodels
 optuna
+lightgbm
+xgboost

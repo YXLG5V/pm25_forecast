@@ -3,7 +3,11 @@
 # ============================================================
 
 from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
+from lightgbm import LGBMRegressor
+from xgboost import XGBRegressor
+from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
+from sklearn.impute import SimpleImputer
 
 import pandas as pd
 import numpy as np
@@ -15,17 +19,23 @@ from sklearn.metrics import (
 
 import matplotlib.pyplot as plt
 
+import os
+
 # ============================================================
 # 1. Load data
 # ============================================================
 
-df = pd.read_parquet("./data/preprocessed/preprocessed_with_FE.parquet")
+train = pd.read_parquet("./data/preprocessed/train.parquet")
+test  = pd.read_parquet("./data/preprocessed/test.parquet")
 FEATURES = joblib.load("./artifacts/features.pkl")
 LOCATION_MAPPING = joblib.load("./artifacts/location_mapping.pkl")
+ENSEMBLE_PATH = "./models/models_ensemble.pkl"
 
-df["pm25_next"] = (
-    df.groupby("location")["pm25"].shift(-1)
-)
+train = train.sort_values(["location", "datetime"])
+test  = test.sort_values(["location", "datetime"])
+
+train["pm25_next"] = train.groupby("location")["pm25"].shift(-1)
+test["pm25_next"]  = test.groupby("location")["pm25"].shift(-1)
 
 TARGET = "pm25_next"
 
@@ -45,16 +55,12 @@ columns = [
     "stagnation_hours_6h"
 ]
 
-df = df.dropna(subset=columns)
+train = train.dropna(subset=columns)
+test  = test.dropna(subset=columns)
 
 # ============================================================
-# 2. Split data
+# 2. Train
 # ============================================================
-
-split_date = "2025-09-01"
-
-train = df[df.index < split_date]
-test  = df[df.index >= split_date]
 
 X_train = train[FEATURES]
 y_train = train[TARGET]
@@ -75,53 +81,72 @@ print("Test period :", test.index.min(), "→", test.index.max())
 # 3. Models
 # ============================================================
 
-# Basic test
-# models = {
-#     "RandomForest": RandomForestRegressor(
-#         n_estimators=100,
-#         max_depth=10,
-#         n_jobs=-1,
-#         random_state=42
-#     ),
-#     "HistGB": HistGradientBoostingRegressor(
-#         max_iter=200,
-#         random_state=42
-#     )
-# }
-
+# Optimized
 # Optimized
 models = {
     "RandomForest": Pipeline([
         ("model", RandomForestRegressor(
-            n_estimators=500,
-            max_depth=15,
-            min_samples_split=10,
-            min_samples_leaf=7,
+            n_estimators=715,
+            max_depth=16,
+            min_samples_split=9,
+            min_samples_leaf=3,
             max_features=None,
             random_state=42
         ))
     ]),
-    
+
     "HistGB": Pipeline([
         ("model", HistGradientBoostingRegressor(
-            max_iter=365,
-            learning_rate=0.04211984714387256,
+            max_iter=309,
+            learning_rate=0.052392441315122884,
             max_depth=6,
-            min_samples_leaf=62,
-            l2_regularization=0.42610860193308486,
-            max_bins=230,
+            min_samples_leaf=89,
+            l2_regularization=0.10712858441423956,
+            max_bins=172,
             random_state=42
         ))
-    ])
+    ]),
+
+    "LGBM": Pipeline([
+    ("model", LGBMRegressor(
+        n_estimators=723,
+        learning_rate=0.012885472793169907,
+        max_depth=11,
+        num_leaves=71,
+        subsample=0.6904437214202783,
+        colsample_bytree=0.6924371848724423,
+        random_state=42
+    ))
+    ]),
+
+    "XGB": Pipeline([
+        ("model", XGBRegressor(
+            n_estimators=615,
+            learning_rate=0.08447106507617709,
+            max_depth=3,
+            subsample=0.9593316490919434,
+            colsample_bytree=0.743423049049403,
+            random_state=42
+        ))
+    ]),
+
+    "Ridge": Pipeline([
+        ("imputer", SimpleImputer(strategy="median")),
+        ("model", Ridge(alpha=0.01007089724896645))
+    ]),
 }
 
-print("\nTraining model...")
+
+print("\nTraining models...")
 results = []
+trained_models = {}
 
 for name, model in models.items():
     
     # log target
     model.fit(X_train, y_train_log)
+
+    trained_models[name] = model
     
     pred_log = model.predict(X_test)
     pred = np.maximum(0, np.expm1(pred_log))
@@ -135,41 +160,105 @@ for name, model in models.items():
         "R2": r2
     })
 
+# ============================================================
+# ENSEMBLE (ha létezik)
+# ============================================================
+
+if os.path.exists(ENSEMBLE_PATH):
+
+    print("\nEvaluating existing ensemble...")
+
+    ensemble_models = joblib.load(ENSEMBLE_PATH)
+
+    preds = []
+
+    for model in ensemble_models.values():
+        p_log = model.predict(X_test)
+        p = np.maximum(0, np.expm1(p_log))
+        preds.append(p)
+
+    ensemble_pred = np.mean(preds, axis=0)
+
+    mae = mean_absolute_error(y_test, ensemble_pred)
+    r2  = r2_score(y_test, ensemble_pred)
+
+    results.append({
+        "model": "ENSEMBLE",
+        "MAE": mae,
+        "R2": r2
+    })
+
 results_df = pd.DataFrame(results).sort_values("MAE")
+top_models = (
+    results_df[results_df["model"] != "ENSEMBLE"]
+    .head(2)["model"]
+    .tolist()
+)
+print("Top models:", top_models)
 print(results_df)
 
-results_df.set_index("model")["MAE"].plot.bar()
-plt.title("Model comparison (MAE)")
+plot_df = results_df[results_df["model"] != "Ridge"]
+
+plot_df.set_index("model")["MAE"].plot.bar()
+plt.title("Model comparison (MAE, without Ridge)")
 plt.show()
 
 # ============================================================
 # 4. Save model
 # ============================================================
 
-joblib.dump(models["HistGB"], "./models/model.pkl")
-print("Model saved.")
+best_model_name = results_df.iloc[0]["model"]
 
+if best_model_name == "ENSEMBLE":
+    best_model = ensemble_models
+else:
+    best_model = trained_models[best_model_name]
+
+joblib.dump(best_model, "./models/model.pkl")
+print(f"Best model = {best_model_name} saved.")
+
+top_trained_models = {
+    name: trained_models[name]
+    for name in top_models
+}
+
+joblib.dump(top_trained_models, ENSEMBLE_PATH)
+print("Top-2 ensemble saved.")
 
 # ============================================================
 # 5. MAE
 # ============================================================
 
-best_model_name = results_df.iloc[0]["model"]
-best_model = models[best_model_name]
-
 print(f"\nBest model: {best_model_name}")
 
-# --- TRAIN PRED ---
-train_pred_log = best_model.predict(X_train)
-train_pred = np.maximum(0, np.expm1(train_pred_log))
+if best_model_name == "ENSEMBLE":
 
-# --- TEST PRED ---
-test_pred_log  = best_model.predict(X_test)
-test_pred = np.maximum(0, np.expm1(test_pred_log))
+    # --- TRAIN ---
+    train_preds = []
+    for m in best_model.values():
+        p = np.maximum(0, np.expm1(m.predict(X_train)))
+        train_preds.append(p)
+    train_pred = np.mean(train_preds, axis=0)
 
+    # --- TEST ---
+    test_preds = []
+    for m in best_model.values():
+        p = np.maximum(0, np.expm1(m.predict(X_test)))
+        test_preds.append(p)
+    test_pred = np.mean(test_preds, axis=0)
+
+else:
+
+    # --- TRAIN ---
+    train_pred_log = best_model.predict(X_train)
+    train_pred = np.maximum(0, np.expm1(train_pred_log))
+
+    # --- TEST ---
+    test_pred_log  = best_model.predict(X_test)
+    test_pred = np.maximum(0, np.expm1(test_pred_log))
+
+    
 # --- METRICS ---
-from sklearn.metrics import mean_absolute_error, r2_score
-
 train_mae = mean_absolute_error(y_train, train_pred)
 test_mae  = mean_absolute_error(y_test, test_pred)
 

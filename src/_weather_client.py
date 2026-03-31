@@ -1,6 +1,6 @@
 # ======================================================
 # WEATHER_CLIENT.PY
-# Unified weather access (history + forecast)
+# 
 # ======================================================
 
 import requests
@@ -55,7 +55,7 @@ def fetch_weather_forecast(lat, lon):
 
 
 # ======================================================
-# WEATHER HISTORY (CRITICAL FOR ML CONSISTENCY)
+# WEATHER HISTORY
 # ======================================================
 
 def fetch_weather_history(lat, lon, hours=24):
@@ -85,5 +85,4 @@ def fetch_weather_history(lat, lon, hours=24):
 
     df = _parse_weather_json(data)
 
-    # csak a szükséges időablak
     return df.loc[start:end]

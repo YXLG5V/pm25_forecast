@@ -12,7 +12,7 @@ class PM25Model:
 
         X = df[self.features]
         
-        X = X.ffill().fillna(0)
+        #X = X.ffill().fillna(0)
 
         pred_log = self.model.predict(X)
         pred = np.maximum(0, np.expm1(pred_log))

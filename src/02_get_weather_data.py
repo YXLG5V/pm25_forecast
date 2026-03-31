@@ -1,16 +1,11 @@
 import requests
 import pandas as pd
 
-from _utils import get_time_window
-
-
 LAT = 47.6875
 LON = 17.6504
 
 
-def download_weather(days_back):
-
-    start, end = get_time_window(days_back)
+def download_weather(start, end):
 
     print("Downloading weather data...")
     print("TIME WINDOW:", start, "→", end)
@@ -43,17 +38,27 @@ def download_weather(days_back):
     })
 
     df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
-    df = df.set_index("datetime")
+    df = df.sort_values("datetime")
 
-    df = df.loc[start:end]
+    df = df[(df["datetime"] >= start) & (df["datetime"] <= end)]
 
     return df
 
 
-if __name__ == "__main__":
+import argparse
 
-    weather = download_weather(days_back=730)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--start_date", required=True)
+    parser.add_argument("--end_date", required=True)
+    args = parser.parse_args()
+
+    start = pd.to_datetime(args.start_date, utc=True)
+    end   = pd.to_datetime(args.end_date, utc=True)
+
+    weather = download_weather(start, end)
 
     weather.to_csv("./data/raw/weather.csv")
 
     print("Saved weather dataset.")
+

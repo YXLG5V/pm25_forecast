@@ -7,12 +7,15 @@ import pandas as pd
 import joblib
 
 from _preprocessing import (
+    interpolate_station,
     build_base_dataset
 )
 
 from _feature_engineering import (
-    build_features
+    build_features,
+    FEATURES
 )
+
 
 # ============================================================
 # LOAD RAW DATA
@@ -37,8 +40,35 @@ df = build_base_dataset(
     weather=weather
 )
 
-print("Base dataset shape:", df.shape)
-df.to_csv("./data/preprocessed/eda_preprocessed.csv", index=False)
+# ============================================================
+# SPLIT
+# ============================================================
+
+#split_date = "2025-09-01"
+split_date = df["datetime"].quantile(0.75)
+df = df.sort_values(["location", "datetime"])
+
+# SPLIT
+train = df[df["datetime"] < split_date].copy()
+test  = df[df["datetime"] >= split_date].copy()
+
+train = train.sort_values(["location", "datetime"])
+test  = test.sort_values(["location", "datetime"])
+
+# INTERPOLATE
+train = interpolate_station(train)
+
+# CONTEXT
+history = train.groupby("location").tail(24)
+test_ctx = pd.concat([history, test])
+
+test_ctx = interpolate_station(test_ctx)
+
+test = test_ctx.reset_index().merge(
+    test.reset_index()[["location", "datetime"]],
+    on=["location", "datetime"],
+    how="inner"
+).sort_values(["location", "datetime"])
 
 # ============================================================
 # FEATURE ENGINEERING
@@ -46,84 +76,36 @@ df.to_csv("./data/preprocessed/eda_preprocessed.csv", index=False)
 
 print("\nBuilding features...")
 
-df = build_features(df, fit=True)
+train = train.sort_values(["location", "datetime"])
+test  = test.sort_values(["location", "datetime"])
 
-print("Dataset with features:", df.shape)
+# train = train.drop_duplicates(["location", "datetime"])
+# test  = test.drop_duplicates(["location", "datetime"])
+
+train = build_features(train, fit=True)
+test  = build_features(test, fit=False)
 
 
-FEATURES = [
+print("Train dataset with features:", train.shape)
+print("Test dataset with features:", test.shape)
 
-    # ------------------------------------------------
-    # AIR POLLUTION
-    # ------------------------------------------------
-    "pm10",
-    "no2",
-    "so2",
-
-    # ------------------------------------------------
-    # PM MEMORY
-    # ------------------------------------------------
-    "pm25_lag1",
-    "pm25_lag3",
-    "pm25_lag6",
-    "pm25_lag24",
-    "pm25_roll6",
-    "pm25_roll24",
-    "pm25_trend_3h",
-    "pm25_std_12h",
-
-    # ------------------------------------------------
-    # TIME
-    # ------------------------------------------------
-    "hour",
-    "hour_sin",
-    "hour_cos",
-    "month",
-    "month_sin",
-    "month_cos",
-    "weekend_flag",
-    "heating_season_flag",
-
-    # ------------------------------------------------
-    # WEATHER CURRENT
-    # ------------------------------------------------
-    "temperature",
-    "humidity",
-    "wind_speed",
-    "precipitation",
-
-    # ------------------------------------------------
-    # WEATHER DYNAMICS
-    # ------------------------------------------------
-    "temp_change_3h",
-    "humidity_change_3h",
-    "wind_change_3h",
-
-    # ------------------------------------------------
-    # PHYSICAL INTERACTIONS
-    # ------------------------------------------------
-    "stagnation_index",
-    "temp_wind_interaction",
-    "mixing_index",
-    "ventilation_index",
-    "stagnation_hours_6h",
-
-    # ------------------------------------------------
-    # SPATIAL
-    # ------------------------------------------------
-    "location_id",
-    "lat_norm",
-    "lon_norm"
-]
 
 # ============================================================
 # SAVE DATASET
 # ============================================================
-df.to_parquet("./data/preprocessed/preprocessed_with_FE.parquet")
-print("\nDataset saved.")
+train = train.set_index("datetime")
+test  = test.set_index("datetime")
 
-print("Dataset shape:", df.shape)
-print("Time range:", df.index.min(), "→", df.index.max())
+train.to_parquet("./data/preprocessed/train.parquet")
+test.to_parquet("./data/preprocessed/test.parquet")
+
+print("\nDatasets saved.")
+
+print("Train dataset shape:", train.shape)
+print("Time range:", train.index.min(), "→", train.index.max())
+
+print("Test dataset shape:", test.shape)
+print("Time range:", test.index.min(), "→", test.index.max())
 
 # ============================================================
 # SAVE ARTIFACTS

@@ -15,6 +15,7 @@ import pandas as pd
 import numpy as np
 import joblib
 import matplotlib.pyplot as plt
+import shap
 
 MODEL_PATH = "./models/model.pkl"
 FEATURES_PATH = "./artifacts/features.pkl"
@@ -33,17 +34,21 @@ print("Model loaded: ", MODEL_PATH)
 # 1. Load data
 # ============================================================
 
-df = pd.read_parquet("./data/preprocessed/preprocessed_with_FE.parquet")
+train = pd.read_parquet("./data/preprocessed/train.parquet")
+test  = pd.read_parquet("./data/preprocessed/test.parquet")
 
-print("Dataset loaded:", df.shape)
+print("Dataset loaded:", train.shape)
 
-df["pm25_next"] = (
-    df.groupby("location")["pm25"].shift(-1)
-)
+train = train.sort_values(["location", "datetime"])
+test  = test.sort_values(["location", "datetime"])
 
-df = df.dropna(subset=["pm25_next"])
+train["pm25_next"] = train.groupby("location")["pm25"].shift(-1)
+test["pm25_next"]  = test.groupby("location")["pm25"].shift(-1)
 
-lag_columns = [
+TARGET = "pm25_next"
+
+columns = [
+    "pm25_next",
     "pm25_lag1",
     "pm25_lag3",
     "pm25_lag6",
@@ -57,29 +62,30 @@ lag_columns = [
     "wind_change_3h",
     "stagnation_hours_6h"
 ]
-df = df.dropna(subset=lag_columns)
 
-if "datetime" in df.columns:
-    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
-    df = df.set_index("datetime")
-
-df = df.sort_index()
+train = train.dropna(subset=columns)
+test  = test.dropna(subset=columns)
 
 # ============================================================
-# 2. Time-aware split
+# 2. Train
 # ============================================================
-
-TARGET = "pm25_next"
-
-split_date = pd.to_datetime("2025-09-01", utc=True)
-
-test = df[df.index >= split_date]
 
 X_test = test[FEATURES]
 y_test = test["pm25_next"]
 
-y_pred_log = model.predict(X_test)
-y_pred = np.maximum(0, np.expm1(y_pred_log))
+# y_pred_log = model.predict(X_test)
+# y_pred = np.maximum(0, np.expm1(y_pred_log))
+
+if isinstance(model, dict):  # ensemble
+    preds = []
+    for m in model.values():
+        p_log = m.predict(X_test)
+        p = np.maximum(0, np.expm1(p_log))
+        preds.append(p)
+    y_pred = np.mean(preds, axis=0)
+else:
+    y_pred_log = model.predict(X_test)
+    y_pred = np.maximum(0, np.expm1(y_pred_log))
 
 
 # ============================================================
@@ -105,10 +111,7 @@ smape = np.mean(
 )
 
 # --- MASE ---
-naive_pred = (
-    test.groupby("location")[TARGET]
-    .shift(1)
-)
+naive_pred = test["pm25_lag1"]
 
 valid = naive_pred.notna()
 
@@ -184,8 +187,14 @@ plt.show()
 
 y_test_log = np.log1p(y_test)
 
+# --- ensemble eset kezelése ---
+if isinstance(model, dict):
+    model_for_perm = model["LGBM"]
+else:
+    model_for_perm = model
+
 result = permutation_importance(
-    model,
+    model_for_perm,
     X_test,
     y_test_log,
     n_repeats=5,
@@ -202,6 +211,7 @@ plt.figure(figsize=(8,6))
 importance.plot.barh()
 plt.title("Permutation Feature Importance")
 plt.show()
+
 
 # hiba vs idő
 plt.figure(figsize=(12,4))
@@ -226,23 +236,19 @@ plt.show()
 # 5. SHAP ANALYSIS
 # ============================================================
 
-import shap
-
 print("\nRunning SHAP analysis...")
 
-# --- pipeline unwrap ---
-if hasattr(model, "named_steps"):
+if isinstance(model, dict):
+    model_for_shap = model["LGBM"].named_steps["model"]
+elif hasattr(model, "named_steps"):
     model_for_shap = model.named_steps["model"]
 else:
     model_for_shap = model
 
-# --- sample---
 X_sample = X_test.sample(min(2000, len(X_test)), random_state=42)
 
-# --- explainer ---
 explainer = shap.TreeExplainer(model_for_shap)
-
-shap_values = None
+shap_values = []
 shap_values = explainer.shap_values(X_sample)
 
 # ============================================================
@@ -261,11 +267,17 @@ shap.summary_plot(shap_values, X_sample, plot_type="bar")
 # 5.3. TOP FEATURE AUTOMATIKUSAN
 # ============================================================
 
-importance = np.abs(shap_values).mean(axis=0)
-feat_imp = pd.Series(importance, index=X_sample.columns).sort_values(ascending=False)
+import numpy as np
+import pandas as pd
+
+shap_importance = np.abs(shap_values).mean(axis=0)
+feat_imp = pd.Series(shap_importance, index=X_sample.columns).sort_values(ascending=False)
 
 print("\nTop features (SHAP):")
 print(feat_imp.head(10))
+
+# TOP 10 mentéshez
+top_features = feat_imp.head(10).to_dict()
 
 # ============================================================
 # 6. Save metrics

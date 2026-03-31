@@ -28,7 +28,10 @@ from _weather_client import (
     fetch_weather_history,                           # múlt időjárás
     fetch_weather_forecast                           # jövő időjárás
 )
-from _preprocessing import build_base_dataset        # cleaning + merge
+from _preprocessing import (
+    build_base_dataset,        # cleaning + merge
+    interpolate_station
+)
 from _feature_engineering import build_features      # feature creation
 from datetime import datetime
 
@@ -121,6 +124,8 @@ history = build_base_dataset(
     weather=weather_hist
 )
 
+history = interpolate_station(history)
+
 # ezt csak plothoz
 history_real = history.copy()
 
@@ -199,13 +204,20 @@ for step in range(1, HORIZON + 1):
     if X.isna().any().any():
         dbg("NaN a feature vectorban!", level = "WARN")
 
-    # modell log-space-ben tanult
-    pred_log = model.predict(X)[0]
+    #Ensemble?    
+    if isinstance(model, dict):
+    
+        preds = []
+        for m in model.values():
+            p = np.maximum(0, np.expm1(m.predict(X)[0]))
+            preds.append(p)
+        
+        pred = np.mean(preds)
 
-    # visszaalakítás
-    pred = np.maximum(0, np.expm1(pred_log))
-
-    dbg(f"Pred log: {pred_log}")
+    else:
+        # modell log-space-ben tanult, visszaalakítás
+        pred = np.maximum(0, np.expm1(model.predict(X)[0]))
+    
     dbg(f"Pred value: {pred}")
 
     # sanity check (extrém értékek)
@@ -283,3 +295,7 @@ plt.legend()
 plt.xticks(rotation=45)
 plt.tight_layout()
 plt.show()
+
+
+# model = joblib.load("./models/model.pkl")
+

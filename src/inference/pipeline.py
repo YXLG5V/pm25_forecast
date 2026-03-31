@@ -1,20 +1,26 @@
 import pandas as pd
+import numpy as np
 from datetime import timedelta
 
-from src._preprocessing import build_base_dataset
+from src._preprocessing import build_base_dataset, interpolate_station
 from src._feature_engineering import build_features
 
 class ForecastPipeline:
 
     def __init__(self, model):
-        self.model = model
+            self.model = model
+            self.features = model.features
 
     def build_history(self, pollutants, weather_hist):
-
-        return build_base_dataset(
+        
+        df = build_base_dataset(
             pollution=pollutants,
             weather=weather_hist
         )
+        
+        df = interpolate_station(df)
+        
+        return df
 
     def forecast(self, history, weather_fc, horizon):
 
@@ -53,9 +59,21 @@ class ForecastPipeline:
             if df_features.empty:
                 raise RuntimeError("Feature engineering returned empty dataframe")
             
-            row = df_features.iloc[[-1]][self.model.features]
+            X = df_features.iloc[[-1]][self.features]
 
-            pred = self.model.predict(row)[0]
+            if X.isna().any().any():
+                print("NaN a feature vectorban!")
+
+            model = self.model.model
+
+            if isinstance(model, dict):
+                preds = []
+                for m in model.values():
+                    p = np.maximum(0, np.expm1(m.predict(X)[0]))
+                    preds.append(p)
+                pred = np.mean(preds)
+            else:
+                pred = np.maximum(0, np.expm1(model.predict(X)[0]))
 
             history.loc[
                 history["datetime"] == future_time,

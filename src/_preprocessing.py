@@ -34,7 +34,12 @@ def merge_weather(pollution, weather):
     weather["datetime"] = pd.to_datetime(weather["datetime"], utc=True)
     pollution["datetime"] = pd.to_datetime(pollution["datetime"], utc=True)
 
-    weather = weather.drop_duplicates("datetime")
+    weather = (
+        weather
+        .groupby("datetime")
+        .mean()
+        .reset_index()
+    )
     df = pollution.merge(weather, on="datetime", how="left")
     df = df.sort_values("datetime")
 
@@ -112,7 +117,6 @@ def clean_pollutants(df):
 
     return df
 
-
 # ============================================================
 # INTERPOLATE PER STATION
 # ============================================================
@@ -122,7 +126,7 @@ def interpolate_station(df):
     # --- WEATHER interpoláció (globális, nem location szerint) ---
     weather_cols = ["temperature", "humidity", "wind_speed", "precipitation"]
 
-    df = df.sort_values("datetime")
+    df = df.sort_index()
 
     df[weather_cols] = (
         df[weather_cols]
@@ -135,12 +139,10 @@ def interpolate_station(df):
 
     df[cols_to_interp] = (
         df.groupby("location")[cols_to_interp]
-        .apply(lambda x: x.interpolate(limit=3, limit_direction="forward"))
-        .reset_index(level=0, drop=True)
+        .transform(lambda x: x.interpolate(limit=3, limit_direction="forward"))
     )
 
     return df
-
 
 # ============================================================
 # BUILD BASE DATASET
@@ -160,7 +162,6 @@ def build_base_dataset(pollution, weather):
     df = drop_unused(df)
     df = clean_pollutants(df)
     df = resample_hourly(df)
-    df = interpolate_station(df)
 
     df = df.sort_values(["location", "datetime"])
 
