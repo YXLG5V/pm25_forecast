@@ -10,7 +10,7 @@ End-to-end machine learning system for short-term PM2.5 air pollution forecastin
 - Support environmental awareness and decision making
 - Target performance: **MAE < 5 µg/m³**
 
-More details: see [domain.md](./docs/domain.md)
+More details: see [domain.md](./docs/domain.md) and [PM25_forecast_system.pdf](./docs/PM25_forecast_system.pdf)
 
 ---
 
