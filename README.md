@@ -10,7 +10,18 @@ End-to-end machine learning system for short-term PM2.5 air pollution forecastin
 - Support environmental awareness and decision making
 - Target performance: **MAE < 5 µg/m³**
 
-More details: see [domain.md](./domain.md)
+More details: see [domain.md](./docs/domain.md)
+
+---
+
+## Highlights
+
+- End-to-end ML pipeline (data → model → API)
+- Time-series aware validation
+- Feature engineering driven performance
+- Ensemble modeling for stability
+- Model interpretability using SHAP
+- Production-ready REST API (FastAPI)
 
 ---
 
@@ -36,11 +47,11 @@ More details: see [domain.md](./domain.md)
 
 ## Data
 
-Sources:
-- Air pollution measurements: PM2.5, NO2, PM10, SO2 (OpenAQ)
-- Weather data: temperature, humidity, wind, precipitation (Open-Meteo)
+**Sources:**
+- Air pollution: PM2.5, NO2, PM10, SO2 (OpenAQ)
+- Weather: temperature, humidity, wind, precipitation (Open-Meteo)
 
-Key challenges:
+**Challenges:**
 - Missing values
 - Irregular timestamps
 - Measurement noise
@@ -79,7 +90,7 @@ Key challenges:
 
 ### Optimization
 - Optuna
-- TimeSeriesSplit (time-aware CV)
+- TimeSeriesSplit (time-aware cross-validation)
 
 ---
 
@@ -87,20 +98,23 @@ Key challenges:
 
 - Train/test split (time-based)
 - Walk-forward validation (real forecasting simulation)
+- Baseline comparison (lag-based model)
+
+Ensures realistic evaluation and prevents data leakage.
 
 ---
 
 ## Evaluation
 
-Metrics:
+**Metrics:**
 - MAE, RMSE, R²
 - MAPE, SMAPE
-- MASE
+- MASE (time-series baseline comparison)
 
 ### Key findings
 
 - Lag features dominate predictions
-- Gradient boosting performs best
+- Gradient boosting models perform best
 - Ensemble improves stability
 - Model underestimates extreme pollution spikes
 
@@ -110,6 +124,8 @@ Metrics:
 
 - Permutation importance
 - SHAP analysis
+
+Provides insight into feature impact and model behavior.
 
 ---
 
@@ -152,12 +168,11 @@ Run locally:
 uvicorn src.inference.app:app --reload
 
 Docs:
-
 http://127.0.0.1:8000/docs
 
 ---
 
-## Pipeline
+## Test Pipeline
 
 End-to-end pipeline executable:
 
@@ -170,6 +185,11 @@ Steps:
 - training
 - evaluation
 - forecasting
+
+**Key properties:**
+- Separate train and inference pipelines
+- No data leakage
+- Fully reproducible workflow
 
 ---
 
@@ -192,21 +212,22 @@ Saved artifacts:
 
 ## Limitations
 
-- Extreme values underpredicted
-- Weather data not station-specific
-- Short forecast horizon
+- Strong dependence on lag features
+- Extreme values are harder to predict
+- Weather data is not station-specific
+- Optimized for short horizon (1–12 hours)
 
 ---
 
 ## Future Work
 
+- Hybrid recursive + direct multi-horizon models
 - Better extreme event modeling
-- Additional data sources
+- Additional meteorological data
 - Deep learning (LSTM / Transformers)
-- Docker
+- Docker deployment
+- Database integration
 - Frontend implementation
-- Database implementation
-
 
 ---
 
@@ -224,7 +245,7 @@ Saved artifacts:
 - Optuna
 
 ### Time Series Analysis
-- statsmodels (autocorrelation analysis)
+- statsmodels
 
 ### Data Visualization
 - matplotlib
@@ -242,24 +263,26 @@ Saved artifacts:
 - httpx
 - openaq
 
-### Utilities & Workflow
+### Utilities
 - joblib (model persistence)
 - tqdm (progress tracking)
-- python-dotenv (configuration management)
+- python-dotenv (configuration)
+
 ---
 
 ## 🤖 AI Usage
 
 AI tools (ChatGPT) were used during the project in the following ways:
 
-- Understanding domain-specific aspects of air pollution and time series modeling
+- Supporting understanding of domain and time series concepts
 - Assisting with Python syntax and library usage
-- Rapid prototyping of ideas (e.g. feature engineering and model experimentation)
+- Rapid prototyping of own ideas (feature engineering, modeling)
 - Supporting documentation writing
 
-Important:
-All generated code and ideas were manually reviewed, validated, and adapted.  
-The final implementation reflects the author's own understanding and design decisions.
+Important:  
+AI was primarily used to accelerate the implementation of own ideas.  
+All solutions were manually reviewed, validated, and adapted.  
+The final implementation reflects the author's own understanding and decisions.
 
 ---
 
