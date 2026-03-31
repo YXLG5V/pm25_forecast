@@ -118,6 +118,12 @@ Ensures realistic evaluation and prevents data leakage.
 - Ensemble improves stability
 - Model underestimates extreme pollution spikes
 
+### Prediction vs True
+
+The model closely follows the overall time series patterns, while extreme pollution spikes remain more challenging.
+
+![Prediction vs True](./docs/pred_vs_true.png)
+
 ---
 
 ## Interpretability
