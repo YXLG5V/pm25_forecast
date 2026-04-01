@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>PM2.5 Forecast</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+
+<style>
+body {
+    font-family: Arial, sans-serif;
+    background: #6182c5;
+    margin: 0;
+}
+
+.container {
+    max-width: 800px;
+    margin: auto;
+}
+
+.card {
+    background: white;
+    border-radius: 12px;
+    padding: 20px;
+    margin-top: 15px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+    transition: background 0.6s ease;
+}
+
+canvas {
+    width: 100% !important;
+    height: 350px !important;
+}
+
+#location-select {
+    padding: 8px;
+    border-radius: 6px;
+    margin-bottom: 10px;
+    font-size: 14px;
+    width: 100%;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="container">
+
+    <div class="card" id="aqi-card">
+
+        <select id="location-select" onchange="loadData()">
+            <option value="Gyor 2 Ifjusag">Gyor 2 Ifjusag</option>
+            <option value="Gyor Ifjusag">Gyor Ifjusag</option>
+            <option value="Gyor Szent Istvan" selected>Gyor Szent Istvan</option>
+            <option value="VS">VS</option>
+        </select>
+
+        <h2 id="current">Loading...</h2>
+
+    </div>
+
+    <div class="card">
+        <canvas id="chart"></canvas>
+    </div>
+
+</div>
+
+<script>
+
+let chart = null;
+
+/* ===== AQI COLOR ===== */
+function getAQIColor(pm25) {
+    if (pm25 <= 12) return "#d4edda";
+    if (pm25 <= 35) return "#fff3cd";
+    if (pm25 <= 55) return "#ffe5b4";
+    return "#f8d7da";
+}
+
+async function loadData() {
+
+    try {
+
+        const location = document.getElementById("location-select").value;
+        document.getElementById("current").innerText = "Loading...";
+        const res = await fetch("/forecast", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                location_name: location
+            })
+        });
+
+        const data = await res.json();
+
+        const forecast = data.forecast || [];
+
+        if (!forecast.length) return;
+
+        // ===== CURRENT =====
+        const current = forecast[0].pm25_pred;
+
+        document.getElementById("current").innerText =
+            location + " - PM2.5: " + current.toFixed(2) + " µg/m³";
+
+        document.getElementById("aqi-card").style.background =
+            getAQIColor(current);
+
+        // ===== CHART DATA =====
+        const labels = forecast.map(p => new Date(p.datetime));
+        const values = forecast.map(p => p.pm25_pred);
+
+        // ===== CHART =====
+        if (!chart) {
+
+            chart = new Chart(
+                document.getElementById("chart"),
+                {
+                    type: "line",
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            label: "PM2.5 Forecast",
+                            data: values,
+                            tension: 0.3,
+                            borderWidth: 2,
+                            pointRadius: 3
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        animation: false,
+                        scales: {
+                            x: {
+                                type: "time",
+                                time: {
+                                    unit: "hour"
+                                }
+                            }
+                        }
+                    }
+                }
+            );
+
+        } else {
+
+            chart.data.labels = labels;
+            chart.data.datasets[0].data = values;
+            chart.update();
+        }
+
+    } catch (e) {
+        console.error("Error loading forecast:", e);
+    }
+}
+
+// initial load
+loadData();
+
+</script>
+
+</body>
+</html>

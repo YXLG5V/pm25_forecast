@@ -28,6 +28,7 @@ class ForecastPipeline:
         predictions = []
 
         current_time = history["datetime"].max()
+        logged_nan = False
 
         for step in range(1, horizon + 1):
 
@@ -61,8 +62,13 @@ class ForecastPipeline:
             
             X = df_features.iloc[[-1]][self.features]
 
-            if X.isna().any().any():
-                print("NaN a feature vectorban!")
+            if X.isna().any().any() and not logged_nan:
+                print(f"NaN a feature vectorban!")
+                missing_pct = X.isna().mean().mean() * 100
+                print(f"Missing ratio: {missing_pct:.1f}%")
+                missing_features = X.columns[X.isna().any()].tolist()
+                print(f"Missing features: {missing_features}")
+                logged_nan = True
 
             model = self.model.model
 

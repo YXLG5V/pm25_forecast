@@ -28,7 +28,11 @@ BASE_CONFIG = {
     "location_map": "./artifacts/location_mapping.pkl",
     "lag_hours": 48
 }
+from fastapi.responses import FileResponse
 
+@app.get("/ui")
+def ui():
+    return FileResponse("./src/inference/templates/index.html")
 
 @app.get("/")
 def health():
