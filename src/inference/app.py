@@ -30,7 +30,7 @@ BASE_CONFIG = {
 }
 from fastapi.responses import FileResponse
 
-@app.get("/ui")
+@app.get("/demo")
 def ui():
     return FileResponse("./src/inference/templates/index.html")
 
