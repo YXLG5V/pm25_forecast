@@ -18,13 +18,12 @@ More details: see [domain.md](./docs/domain.md) and [PM25_forecast_system.pdf](.
 
 https://pm25-forecast.onrender.com/demo
 
-⚠️ The app may take ~30 seconds to wake up (Render free tier)
-
 **Features:**
 - Real-time PM2.5 forecast (12h horizon)
 - Interactive visualization (history + forecast)
 - SHAP-based explainability for each hour
 
+⚠️ The app may take ~30 seconds to wake up (Render free tier)
 ---
 
 ## Highlights
