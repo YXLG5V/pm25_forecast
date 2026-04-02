@@ -10,6 +10,10 @@ from .pipeline import ForecastPipeline
 
 
 class ForecastService:
+
+    WEATHER_LAT = 47.6875
+    WEATHER_LON = 17.6504
+
     def run(self):
         return self.get_forecast()
     
@@ -55,18 +59,18 @@ class ForecastService:
         )
 
         weather_hist = fetch_weather_history(
-            cfg["lat"],
-            cfg["lon"],
+            self.WEATHER_LAT,
+            self.WEATHER_LON,
             hours=cfg["lag_hours"] + 3
         )
 
         weather_hist = weather_hist.reset_index()
 
         weather_fc = fetch_weather_forecast(
-            cfg["lat"],
-            cfg["lon"]
+            self.WEATHER_LAT,
+            self.WEATHER_LON
         )
-
+        
         history = self.pipeline.build_history(
             pollutants,
             weather_hist

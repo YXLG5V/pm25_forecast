@@ -28,6 +28,7 @@ class ForecastPipeline:
         "stagnation_index": "Air Stagnation",
         "mixing_index": "Mixing",
         "ventilation_index": "Ventilation",
+        "temp_wind_interaction": "Temp × Wind Effect",
 
         "pm10": "PM10",
         "no2": "NO₂",

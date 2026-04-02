@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from src.inference.service import ForecastService
 from fastapi.responses import FileResponse
 from pathlib import Path
+from src._pollutant_client import STATIONS
 
 app = FastAPI()
 
@@ -13,15 +14,11 @@ from pydantic import BaseModel
 
 # class ForecastRequest(BaseModel):
 #     location_name: str
-#     lat: float
-#     lon: float
 #     horizon: int = 12
 
 
 class ForecastRequest(BaseModel):
     location_name: str = "Gyor Szent Istvan"
-    lat: float = 47.6875
-    lon: float = 17.6504
     horizon: int = 12
 
 BASE_CONFIG = {
@@ -48,18 +45,20 @@ def health():
 @app.post("/forecast")
 def forecast(req: ForecastRequest):
 
-    service.config.update({
-            "location_name": req.location_name,
-            "lat": req.lat,
-            "lon": req.lon,
-            "horizon": req.horizon
-        })
-
-
+    service.config = {
+        **service.config,
+        "location_name": req.location_name,
+        "horizon": req.horizon
+    }
+    
     result = service.get_forecast()
+
+    station = STATIONS[req.location_name]
 
     return {
         "location": req.location_name,
+        "lat": station["lat"],
+        "lon": station["lon"],
         "history": result["history"].to_dict(orient="records"),
         "forecast": result["forecast"].to_dict(orient="records"),
         "explanations": result["explanations"]

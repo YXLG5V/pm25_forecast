@@ -10,7 +10,7 @@
 <style>
 body {
     font-family: Arial, sans-serif;
-    background: #6182c5;
+    background: linear-gradient(135deg, #5f7dc4, #6fa3d6);
     margin: 0;
 }
 
@@ -20,17 +20,17 @@ body {
 }
 
 .card {
-    background: rgb(255, 255, 255);
-    border-radius: 12px;
-    padding: 20px;
-    margin-top: 15px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-    transition: background 0.6s ease;
+    background: #ffffff;
+    border-radius: 16px;
+    padding: 22px;
+    margin-top: 18px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.08);
+    backdrop-filter: blur(4px);
 }
 
 canvas {
     width: 100% !important;
-    height: 350px !important;
+    height: 360px !important;
 }
 
 #location-select {
@@ -64,10 +64,10 @@ canvas {
 }
 
 .driver-card {
-    background: #f7f9fb;
-    border-radius: 10px;
-    padding: 10px;
-    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+    background: #f4f7fb;
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.04);
 }
 
 .driver-title {
@@ -75,6 +75,24 @@ canvas {
     margin-bottom: 6px;
     font-size: 13px;
 }
+
+#station-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+}
+
+#station-name a {
+    text-decoration: none;
+    border-bottom: 1px dashed rgba(0,0,0,0.3);
+    transition: all 0.2s ease;
+}
+
+#station-name a:hover {
+    border-bottom: 1px solid rgba(0,0,0,0.8);
+}
+
 </style>
 
 </head>
@@ -82,17 +100,25 @@ canvas {
 <body>
 
 <div class="container">
+    <h1>Live PM2.5 Forecast - Győr</h1>
 
     <div class="card" id="aqi-card">
 
         <select id="location-select" onchange="loadData()">
-            <option value="Gyor 2 Ifjusag">Gyor 2 Ifjusag</option>
-            <option value="Gyor Ifjusag">Gyor Ifjusag</option>
-            <option value="Gyor Szent Istvan" selected>Gyor Szent Istvan</option>
-            <option value="VS">VS</option>
+            <option value="Gyor 2 Ifjusag">Győr - Ifjúság krt.</option>
+            <option value="Gyor Ifjusag">Győri SZC Pálffy Miklós</option>
+            <option value="Gyor Szent Istvan" selected>Győr - Szent István út</option>
+            <option value="VS">Vámosszabadi</option>
         </select>
 
-        <h2 id="current">Loading...</h2>
+        <div id="current">
+            <div style="font-size:13px;color:#666;margin-bottom:4px;">Station:</div>
+
+            <div id="station-row" style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
+                <div id="station-name" style="font-size:20px;font-weight:bold;"></div>
+                <div id="station-meta" style="font-size:14px;white-space:nowrap;"></div>
+            </div>
+        </div>
 
     </div>
 
@@ -124,7 +150,8 @@ async function loadData() {
     try {
 
         const location = document.getElementById("location-select").value;
-        document.getElementById("current").innerText = "Loading...";
+        document.getElementById("station-name").innerText = "Loading...";
+        document.getElementById("station-meta").innerText = "";
         const res = await fetch("/forecast", {
             method: "POST",
             headers: {
@@ -155,11 +182,17 @@ async function loadData() {
             month: "2-digit"
         });
 
-        document.getElementById("current").innerText =
-            location +
-            " - Last measured: " +
-            last.pm25.toFixed(2) +
-            " µg/m³ (" + timeStr + ")";
+        const mapsUrl = `https://www.google.com/maps?q=${data.lat},${data.lon}`;
+
+        // bal oldal (station)
+        document.getElementById("station-name").innerHTML =
+            `<a href="${mapsUrl}" target="_blank" style="color:inherit;text-decoration:underline;">
+                ${location}
+            </a>`;
+
+        // jobb oldal (current value)
+        document.getElementById("station-meta").innerHTML =
+            `<strong>${last.pm25.toFixed(2)}</strong> µg/m³ · ${timeStr}`;
 
         document.getElementById("aqi-card").style.background =
             getAQIColor(last.pm25);
