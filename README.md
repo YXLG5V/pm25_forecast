@@ -122,7 +122,7 @@ Ensures realistic evaluation and prevents data leakage.
 
 The model closely follows the overall time series patterns, while extreme pollution spikes remain more challenging.
 
-![Prediction vs True](./docs/pred_vs_true.png)
+![Prediction vs True](./docs/images/pred_vs_true.png)
 
 ---
 
@@ -179,7 +179,7 @@ http://127.0.0.1:8000/docs
 Demo:
 http://127.0.0.1:8000/demo
 
-![Demo frontend](./docs/demo_frontend.png)
+![Demo frontend](./docs/images/demo_frontend.png)
 
 ---
 

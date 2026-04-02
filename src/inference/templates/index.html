@@ -20,7 +20,7 @@ body {
 }
 
 .card {
-    background: white;
+    background: rgb(255, 255, 255);
     border-radius: 12px;
     padding: 20px;
     margin-top: 15px;
@@ -39,6 +39,41 @@ canvas {
     margin-bottom: 10px;
     font-size: 14px;
     width: 100%;
+}
+
+.explanation-item {
+    display: flex;
+    justify-content: space-between;
+    padding: 6px 0;
+    border-bottom: 1px solid #eee;
+    font-size: 14px;
+}
+
+.up {
+    color: #e74c3c;
+}
+
+.down {
+    color: #37db34;
+}
+
+#explanations {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 10px;
+}
+
+.driver-card {
+    background: #f7f9fb;
+    border-radius: 10px;
+    padding: 10px;
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+}
+
+.driver-title {
+    font-weight: bold;
+    margin-bottom: 6px;
+    font-size: 13px;
 }
 </style>
 
@@ -63,6 +98,11 @@ canvas {
 
     <div class="card">
         <canvas id="chart"></canvas>
+    </div>
+
+    <div class="card">
+        <h3>Drivers of the forecast</h3>
+        <div id="explanations"></div>
     </div>
 
 </div>
@@ -97,22 +137,65 @@ async function loadData() {
 
         const data = await res.json();
 
+        const history = data.history || [];
         const forecast = data.forecast || [];
 
         if (!forecast.length) return;
 
         // ===== CURRENT =====
-        const current = forecast[0].pm25_pred;
+        const last = history[history.length - 1];
+
+        const lastTime = new Date(last.datetime);
+
+        // lokális formázás
+        const timeStr = lastTime.toLocaleString("hu-HU", {
+            hour: "2-digit",
+            minute: "2-digit",
+            day: "2-digit",
+            month: "2-digit"
+        });
 
         document.getElementById("current").innerText =
-            location + " - PM2.5: " + current.toFixed(2) + " µg/m³";
+            location +
+            " - Last measured: " +
+            last.pm25.toFixed(2) +
+            " µg/m³ (" + timeStr + ")";
 
         document.getElementById("aqi-card").style.background =
-            getAQIColor(current);
+            getAQIColor(last.pm25);
 
-        // ===== CHART DATA =====
-        const labels = forecast.map(p => new Date(p.datetime));
-        const values = forecast.map(p => p.pm25_pred);
+        // ===== DATA (history + forecast) =====
+
+        const historyPoints = history.map(p => ({
+            x: new Date(p.datetime),
+            y: p.pm25
+        }));
+
+        const forecastPoints = forecast.map(p => ({
+            x: new Date(p.datetime),
+            y: p.pm25_pred
+        }));
+        
+        const lastPoint = historyPoints[historyPoints.length - 1];
+
+        const datasets = [
+            {
+                label: "History",
+                data: historyPoints,
+                borderColor: "#3498db",
+                tension: 0.3,
+                pointRadius: 3
+            },
+            {
+                label: "Forecast",
+                data: [lastPoint, ...forecastPoints],
+                borderColor: "#f39c12",
+                borderDash: [6,4],
+                tension: 0.3,
+                pointRadius: 3
+            }
+        ];
+        
 
         // ===== CHART =====
         if (!chart) {
@@ -122,23 +205,35 @@ async function loadData() {
                 {
                     type: "line",
                     data: {
-                        labels: labels,
-                        datasets: [{
-                            label: "PM2.5 Forecast",
-                            data: values,
-                            tension: 0.3,
-                            borderWidth: 2,
-                            pointRadius: 3
-                        }]
+                        datasets: datasets
                     },
                     options: {
                         responsive: true,
                         animation: false,
+                        interaction: {
+                            mode: 'nearest',
+                            intersect: true
+                        },
+                        plugins: {
+                            tooltip: {
+                                mode: 'nearest',
+                                intersect: true
+                            }
+                        },
                         scales: {
                             x: {
                                 type: "time",
                                 time: {
-                                    unit: "hour"
+                                    unit: "hour",
+                                    displayFormats: {
+                                        hour: "HH:mm"
+                                    }
+                                },
+                                ticks: {
+                                    maxTicksLimit: 8,
+                                    autoSkip: true,
+                                    maxRotation: 0,
+                                    minRotation: 0
                                 }
                             }
                         }
@@ -148,9 +243,56 @@ async function loadData() {
 
         } else {
 
-            chart.data.labels = labels;
-            chart.data.datasets[0].data = values;
+            chart.data.datasets = datasets;
             chart.update();
+            chart.update();
+        }
+
+
+         // ===== SHAP EXPLANATIONS (ALL HOURS) =====
+
+        const container = document.getElementById("explanations");
+        container.innerHTML = "";
+
+        if (data.explanations && data.explanations.length) {
+
+            data.explanations.forEach(hour => {
+
+                const card = document.createElement("div");
+                card.className = "driver-card";
+
+                const time = new Date(hour.datetime)
+                    .toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+                const title = document.createElement("div");
+                title.className = "driver-title";
+                title.innerText = time;
+
+                card.appendChild(title);
+
+                hour.effects
+                    .sort((a, b) => Math.abs(b.value) - Math.abs(a.value))
+                    .slice(0, 5)
+                    .forEach(e => {
+
+                        const row = document.createElement("div");
+                        row.className = "explanation-item";
+
+                        const arrow = e.direction === "up" ? "↑" : "↓";
+                        const cls = e.direction === "up" ? "up" : "down";
+
+                        row.innerHTML = `
+                            <span>${e.feature}</span>
+                            <span class="${cls}">
+                                ${Math.abs(e.value).toFixed(2)} ${arrow}
+                            </span>
+                        `;
+
+                        card.appendChild(row);
+                    });
+
+                container.appendChild(card);
+            });
         }
 
     } catch (e) {

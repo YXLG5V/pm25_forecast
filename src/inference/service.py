@@ -24,11 +24,23 @@ class ForecastService:
             location_map=config["location_map"]
         )
 
-        # --- model ---
+        import shap
+
         self.model = artifacts
 
-        # --- pipeline ---
+        # 1. pipeline
         self.pipeline = ForecastPipeline(self.model)
+
+        # 2. modell kibontása pipeline-ból
+        model = self.model.model
+        if hasattr(model, "named_steps"):
+            model = model.named_steps[list(model.named_steps.keys())[-1]]
+
+        # 3. explainer létrehozása
+        self.explainer = shap.TreeExplainer(model)
+
+        # 4. átadás pipeline-nak
+        self.pipeline.explainer = self.explainer
 
     def get_forecast(self):
 
@@ -60,10 +72,23 @@ class ForecastService:
             weather_hist
         )
 
+
+        history = history.dropna(subset=["pm25"])
+
+
+        history_tail = (
+            history.sort_values("datetime")
+                .tail(12)[["datetime", "pm25"]]
+        )
+
         forecast = self.pipeline.forecast(
             history,
             weather_fc,
             cfg["horizon"]
         )
 
-        return forecast
+        return {
+            "history": history_tail,
+            "forecast": forecast,
+            "explanations": forecast[["datetime", "effects"]].to_dict(orient="records")
+        }

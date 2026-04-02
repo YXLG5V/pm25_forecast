@@ -52,9 +52,11 @@ def forecast(req: ForecastRequest):
 
     service = ForecastService(config)
 
-    df = service.get_forecast()
+    result = service.get_forecast()
 
     return {
         "location": req.location_name,
-        "forecast": df.to_dict(orient="records")
+        "history": result["history"].to_dict(orient="records"),
+        "forecast": result["forecast"].to_dict(orient="records"),
+        "explanations": result["explanations"]
     }
