@@ -24,6 +24,7 @@ https://pm25-forecast.onrender.com/demo
 - SHAP-based explainability for each hour
 
 ⚠️ The app may take ~30 seconds to wake up (Render free tier)
+
 ---
 
 ## Highlights
