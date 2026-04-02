@@ -3,6 +3,8 @@
 # 
 from fastapi import FastAPI
 from src.inference.service import ForecastService
+from fastapi.responses import FileResponse
+from pathlib import Path
 
 app = FastAPI()
 
@@ -28,11 +30,15 @@ BASE_CONFIG = {
     "location_map": "./artifacts/location_mapping.pkl",
     "lag_hours": 48
 }
-from fastapi.responses import FileResponse
+
+service = ForecastService(BASE_CONFIG)
 
 @app.get("/demo")
 def ui():
-    return FileResponse("./src/inference/templates/index.html")
+    
+    BASE_DIR = Path(__file__).resolve().parent
+
+    return FileResponse(BASE_DIR / "templates" / "index.html")
 
 @app.get("/")
 def health():
@@ -42,15 +48,13 @@ def health():
 @app.post("/forecast")
 def forecast(req: ForecastRequest):
 
-    config = {
-        **BASE_CONFIG,
-        "location_name": req.location_name,
-        "lat": req.lat,
-        "lon": req.lon,
-        "horizon": req.horizon
-    }
+    service.config.update({
+            "location_name": req.location_name,
+            "lat": req.lat,
+            "lon": req.lon,
+            "horizon": req.horizon
+        })
 
-    service = ForecastService(config)
 
     result = service.get_forecast()
 
