@@ -81,7 +81,7 @@ def fetch_weather_history(lat, lon, hours=24):
         timezone="UTC"
     )
 
-    data = requests.get(url, params=params).json()
+    data = requests.get(url, params=params, timeout=10).json()
 
     df = _parse_weather_json(data)
 
