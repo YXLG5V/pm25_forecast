@@ -1,6 +1,9 @@
 # PM2.5 Forecasting System – Győr
 
 End-to-end machine learning system for short-term PM2.5 air pollution forecasting using time series modeling, feature engineering, and API deployment.
+## System Architecture
+
+![Architecture](./docs/images/architecture.png)
 
 ---
 
