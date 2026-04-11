@@ -126,6 +126,10 @@ canvas {
         <canvas id="chart"></canvas>
     </div>
 
+    <div class="card" id="recommendation-card">
+        <div id="recommendation"></div>
+    </div>
+
     <div class="card">
         <h3>Drivers of the forecast</h3>
         <div id="explanations"></div>
@@ -136,6 +140,7 @@ canvas {
 <script>
 
 let chart = null;
+let recommendationWindow = null;
 
 /* ===== AQI COLOR ===== */
 function getAQIColor(pm25) {
@@ -166,6 +171,7 @@ async function loadData() {
 
         const history = data.history || [];
         const forecast = data.forecast || [];
+        recommendationWindow = data.recommended_window;
 
         if (!forecast.length) return;
 
@@ -186,7 +192,7 @@ async function loadData() {
 
         // bal oldal (station)
         document.getElementById("station-name").innerHTML =
-            `<a href="${mapsUrl}" target="_blank" style="color:inherit;text-decoration:underline;">
+            `<a href="${mapsUrl}" target="_blank" style="color:inherit;">
                 ${location}
             </a>`;
 
@@ -243,16 +249,27 @@ async function loadData() {
                     options: {
                         responsive: true,
                         animation: false,
+
                         interaction: {
                             mode: 'nearest',
                             intersect: true
                         },
+
                         plugins: {
                             tooltip: {
                                 mode: 'nearest',
-                                intersect: true
+                                intersect: true,
+                                callbacks: {
+                                    label: function(ctx) {
+                                        return `${ctx.dataset.label}: ${ctx.raw.y.toFixed(1)} µg/m³`;
+                                    }
+                                }
+                            },
+                            legend: {
+                                display: true
                             }
                         },
+
                         scales: {
                             x: {
                                 type: "time",
@@ -265,21 +282,60 @@ async function loadData() {
                                 ticks: {
                                     maxTicksLimit: 8,
                                     autoSkip: true,
-                                    maxRotation: 0,
-                                    minRotation: 0
+                                    maxRotation: 0
+                                }
+                            },
+
+                            y: {
+                                beginAtZero: true,
+                                title: {
+                                    display: true,
+                                    text: "PM2.5 (µg/m³)"
                                 }
                             }
                         }
-                    }
+                    },
+
+                    plugins: [{
+                        id: 'recommendationHighlight',
+
+                        afterDatasetsDraw(chart) {
+                            if (!recommendationWindow) return;
+                            if (!chart.chartArea) return; 
+
+                            const { ctx, chartArea, scales } = chart;
+
+                            const start = new Date(recommendationWindow.start);
+                            const end = new Date(recommendationWindow.end);
+
+                            const xStart = scales.x.getPixelForValue(start);
+                            const xEnd = scales.x.getPixelForValue(end);
+
+                            if (!isFinite(xStart) || !isFinite(xEnd)) return;
+
+                            ctx.save();
+
+                            // zöld sáv
+                            ctx.fillStyle = 'rgba(46, 204, 113, 0.15)';
+                            ctx.fillRect(
+                                xStart,
+                                chartArea.top,
+                                xEnd - xStart,
+                                chartArea.bottom - chartArea.top
+                            );
+
+                            ctx.restore();
+                        }
+                    }]
                 }
             );
 
         } else {
 
-            chart.data.datasets = datasets;
-            chart.update();
+        chart.data.datasets = datasets;
+        chart.update();
         }
-
+        
 
          // ===== SHAP EXPLANATIONS (ALL HOURS) =====
 
@@ -326,6 +382,34 @@ async function loadData() {
                 container.appendChild(card);
             });
         }
+
+        if (data.recommended_window) {
+        const rec = data.recommended_window;
+
+        const start = new Date(rec.start);
+        const end = new Date(rec.end);
+
+        const format = (d) =>
+            d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+        document.getElementById("recommendation").innerHTML = `
+            <div style="
+                padding:12px;
+                border-radius:10px;
+                background:#e6f4ea;
+                font-size:15px;
+                text-align: center
+            ">
+                🌿 Best time for outdoor activities and ventilation 🌿<br>
+                <strong style="margin-left:3ch;">
+                    ${format(start)} – ${format(end)}
+                </strong>
+                <span style="font-size:12px;color:#666;">
+                    (lowest predicted air pollution)
+                </span>
+            </div>
+        `;
+    }
 
     } catch (e) {
         console.error("Error loading forecast:", e);

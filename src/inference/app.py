@@ -61,5 +61,6 @@ def forecast(req: ForecastRequest):
         "lon": station["lon"],
         "history": result["history"].to_dict(orient="records"),
         "forecast": result["forecast"].to_dict(orient="records"),
+        "recommended_window": result["recommended_window"],
         "explanations": result["explanations"]
     }

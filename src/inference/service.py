@@ -7,6 +7,7 @@ from src._weather_client import (
 from .artifacts import ModelArtifacts
 from .model import PM25Model
 from .pipeline import ForecastPipeline
+import pandas as pd
 
 
 class ForecastService:
@@ -76,6 +77,17 @@ class ForecastService:
             weather_hist
         )
 
+        history["datetime"] = (
+            pd.to_datetime(history["datetime"])
+            .dt.tz_convert("Europe/Budapest")
+            .dt.tz_localize(None)
+        )
+
+        weather_fc.index = (
+            pd.to_datetime(weather_fc.index)
+            .tz_convert("Europe/Budapest")
+            .tz_localize(None)
+        )
 
         history = history.dropna(subset=["pm25"])
 
@@ -85,7 +97,7 @@ class ForecastService:
                 .tail(12)[["datetime", "pm25"]]
         )
 
-        forecast = self.pipeline.forecast(
+        forecast_df, window = self.pipeline.forecast(
             history,
             weather_fc,
             cfg["horizon"]
@@ -93,6 +105,7 @@ class ForecastService:
 
         return {
             "history": history_tail,
-            "forecast": forecast,
-            "explanations": forecast[["datetime", "effects"]].to_dict(orient="records")
+            "forecast": forecast_df,
+            "recommended_window": window,
+            "explanations": forecast_df[["datetime", "effects"]].to_dict(orient="records")
         }

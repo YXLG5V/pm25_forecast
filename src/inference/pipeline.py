@@ -59,17 +59,37 @@ class ForecastPipeline:
         
         return df
 
+
+    def recommend_window(self, forecast_df, window=3):
+        df = forecast_df.set_index("datetime").copy()
+
+        if "pm25_pred" in df.columns:
+            series = df["pm25_pred"]
+        elif "pm25" in df.columns:
+            series = df["pm25"]
+        else:
+            raise ValueError("No PM2.5 column found")
+
+        rolling_mean = series.rolling(window, min_periods=window).mean()
+
+        best_end = rolling_mean.idxmin()
+        best_start = best_end - timedelta(hours=window - 1)
+
+        return best_start, best_end
+
     def forecast(self, history, weather_fc, horizon):
 
         history = history.copy()
         predictions = []
 
         current_time = history["datetime"].max()
+
         logged_nan = False
 
         for step in range(1, horizon + 1):
 
             future_time = current_time + timedelta(hours=step)
+            future_time = future_time.replace(minute=0, second=0, microsecond=0)
 
             future = history.iloc[-1:].copy()
             future["datetime"] = future_time
@@ -149,17 +169,15 @@ class ForecastPipeline:
                 "pm25"
             ] = pred
 
-            from zoneinfo import ZoneInfo
-
-            if future_time.tzinfo is None:
-                future_time = future_time.replace(tzinfo=ZoneInfo("UTC"))
-
-            local_time = future_time.astimezone(ZoneInfo("Europe/Budapest"))
+            local_time = future_time
 
             predictions.append({
                 "datetime": local_time,
                 "pm25_pred": pred,
                 "effects": effects
             })
-            
-        return pd.DataFrame(predictions)
+        
+        forecast_df = pd.DataFrame(predictions)
+        start, end = self.recommend_window(forecast_df)
+
+        return forecast_df, {"start": start, "end": end}
