@@ -1,19 +1,6 @@
 # PM2.5 Forecasting System – Győr
 
 End-to-end machine learning system for short-term PM2.5 air pollution forecasting using time series modeling, feature engineering, and API deployment.
-## System Architecture
-
-![Architecture](./docs/images/architecture.png)
-
-1. Data ingestion (API)
-2. Preprocessing  
-3. Feature engineering  
-4. Model training (Optuna + TimeSeriesSplit)  
-5. Evaluation (metrics + SHAP)  
-6. Forecasting (recursive)  
-7. REST API (FastAPI)
-
----
 
 ## Project Goal
 
@@ -54,6 +41,20 @@ https://pm25-forecast.onrender.com/demo
 - Time series forecasting
 - Supervised regression
 - Multi-station environmental data
+
+---
+
+## System Architecture
+
+![Architecture](./docs/images/architecture.png)
+
+1. Data ingestion (API)
+2. Preprocessing  
+3. Feature engineering  
+4. Model training (Optuna + TimeSeriesSplit)  
+5. Evaluation (metrics + SHAP)  
+6. Forecasting (recursive)  
+7. REST API (FastAPI)
 
 ---
 
