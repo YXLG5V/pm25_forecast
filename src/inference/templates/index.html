@@ -150,18 +150,31 @@ function getAQIColor(pm25) {
     return "#f8d7da";
 }
 
-function getWeatherIcon(code) {
+function isNight(datetime) {
+    const hour = new Date(datetime).getHours();
+    return (hour < 6 || hour >= 20);
+}
 
-    if (code === 0) return "☀️";
+function getWeatherIcon(code, datetime) {
+
+    const night = isNight(datetime);
+
+    if (code === 0) {
+        return night ? "🌙" : "☀️";
+    }
 
     // partly cloudy / overcast
-    if ([1,2,3].includes(code)) return "⛅";
+    if ([1,2,3].includes(code)) {
+        return night ? "☁️" : "⛅";
+    }
 
     // fog
     if ([45,48].includes(code)) return "🌫️";
 
     // drizzle
-    if ([51,53,55].includes(code)) return "🌦️";
+    if ([51,53,55].includes(code)) {
+        return night ? "🌧️" : "🌦️";
+    }
 
     // freezing drizzle
     if ([56,57].includes(code)) return "🌧️❄️";
@@ -179,7 +192,9 @@ function getWeatherIcon(code) {
     if (code === 77) return "🌨️";
 
     // rain showers
-    if ([80,81,82].includes(code)) return "🌦️";
+    if ([80,81,82].includes(code)) {
+        return night ? "🌧️" : "🌦️";
+    }
 
     // snow showers
     if ([85,86].includes(code)) return "🌨️";
@@ -224,7 +239,7 @@ async function loadData() {
         const lastTime = new Date(last.datetime);
 
         const lastWeather = history[history.length - 1]?.weather_code ?? -1;
-        const weatherIcon = getWeatherIcon(lastWeather);
+        const weatherIcon = getWeatherIcon(lastWeather, last.datetime);
 
         // lokális formázás
         const timeStr = lastTime.toLocaleString("hu-HU", {
@@ -409,7 +424,7 @@ async function loadData() {
                                 ctx.textAlign = "center";
 
                                 ctx.fillText(
-                                    getWeatherIcon(point.weather_code),
+                                    getWeatherIcon(point.weather_code, point.x),
                                     x,
                                     y
                                 );
@@ -433,7 +448,7 @@ async function loadData() {
                                 ctx.textAlign = "center";
 
                                 ctx.fillText(
-                                    getWeatherIcon(point.weather_code),
+                                    getWeatherIcon(point.weather_code, point.x),
                                     x,
                                     y
                                 );
@@ -508,7 +523,7 @@ async function loadData() {
             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
         const icon = rec.weather_code != null
-            ? getWeatherIcon(rec.weather_code)
+            ? getWeatherIcon(rec.weather_code, rec.start)
             : "";
 
         document.getElementById("recommendation").innerHTML = `
