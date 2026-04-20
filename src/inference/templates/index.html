@@ -150,10 +150,53 @@ function getAQIColor(pm25) {
     return "#f8d7da";
 }
 
+function getWeatherIcon(code) {
+
+    if (code === 0) return "☀️";
+
+    // partly cloudy / overcast
+    if ([1,2,3].includes(code)) return "⛅";
+
+    // fog
+    if ([45,48].includes(code)) return "🌫️";
+
+    // drizzle
+    if ([51,53,55].includes(code)) return "🌦️";
+
+    // freezing drizzle
+    if ([56,57].includes(code)) return "🌧️❄️";
+
+    // rain
+    if ([61,63,65].includes(code)) return "🌧️";
+
+    // freezing rain
+    if ([66,67].includes(code)) return "🌧️❄️";
+
+    // snow
+    if ([71,73,75].includes(code)) return "❄️";
+
+    // snow grains
+    if (code === 77) return "🌨️";
+
+    // rain showers
+    if ([80,81,82].includes(code)) return "🌦️";
+
+    // snow showers
+    if ([85,86].includes(code)) return "🌨️";
+
+    // thunderstorm
+    if (code === 95) return "⛈️";
+
+    // thunderstorm + hail
+    if ([96,99].includes(code)) return "⛈️🧊";
+
+    return "☁️"; // fallback
+}
+
 async function loadData() {
 
     try {
-
+        
         const location = document.getElementById("location-select").value;
         document.getElementById("station-name").innerText = "Loading...";
         document.getElementById("station-meta").innerText = "";
@@ -168,7 +211,7 @@ async function loadData() {
         });
 
         const data = await res.json();
-
+        
         const history = data.history || [];
         const forecast = data.forecast || [];
         recommendationWindow = data.recommended_window;
@@ -179,6 +222,9 @@ async function loadData() {
         const last = history[history.length - 1];
 
         const lastTime = new Date(last.datetime);
+
+        const lastWeather = history[history.length - 1]?.weather_code ?? -1;
+        const weatherIcon = getWeatherIcon(lastWeather);
 
         // lokális formázás
         const timeStr = lastTime.toLocaleString("hu-HU", {
@@ -198,7 +244,7 @@ async function loadData() {
 
         // jobb oldal (current value)
         document.getElementById("station-meta").innerHTML =
-            `<strong>${last.pm25.toFixed(2)}</strong> µg/m³ · ${timeStr}`;
+            `<strong>${last.pm25.toFixed(2)}</strong> µg/m³ · ${weatherIcon} · ${timeStr}`;
 
         document.getElementById("aqi-card").style.background =
             getAQIColor(last.pm25);
@@ -207,12 +253,14 @@ async function loadData() {
 
         const historyPoints = history.map(p => ({
             x: new Date(p.datetime),
-            y: p.pm25
+            y: p.pm25,
+            weather_code: p.weather_code
         }));
 
         const forecastPoints = forecast.map(p => ({
             x: new Date(p.datetime),
-            y: p.pm25_pred
+            y: p.pm25_pred,
+            weather_code: p.weather_code
         }));
         
         const lastPoint = historyPoints[historyPoints.length - 1];
@@ -247,6 +295,11 @@ async function loadData() {
                         datasets: datasets
                     },
                     options: {
+                        layout: {
+                            padding: {
+                                bottom: 30 
+                            }
+                        },
                         responsive: true,
                         animation: false,
 
@@ -304,7 +357,6 @@ async function loadData() {
                             if (!chart.chartArea) return; 
 
                             const { ctx, chartArea, scales } = chart;
-
                             const start = new Date(recommendationWindow.start);
                             const end = new Date(recommendationWindow.end);
 
@@ -326,7 +378,70 @@ async function loadData() {
 
                             ctx.restore();
                         }
-                    }]
+                    },{
+                        id: 'weatherIcons',
+
+                        afterDraw(chart) {
+
+                            const { ctx, scales, chartArea } = chart;
+                            const xScale = scales.x;
+
+                            const forecastDataset = chart.data.datasets[1];
+                            const historyDataset = chart.data.datasets[0];
+
+                            ctx.save();
+
+                            // ===== HISTORY (felső sor) =====
+                            historyDataset.data.forEach((point, i) => {
+
+                                if (point.weather_code == null) return;
+
+                                const x = xScale.getPixelForValue(point.x);
+                                const isNearTick = xScale.ticks.some(t => {
+                                    const tx = xScale.getPixelForValue(t.value);
+                                    return Math.abs(tx - x) < 10; // tolerancia
+                                });
+                                if (!isNearTick) return;
+
+                                const y = chartArea.bottom + xScale.height + 20;
+
+                                ctx.font = "16px Arial";
+                                ctx.textAlign = "center";
+
+                                ctx.fillText(
+                                    getWeatherIcon(point.weather_code),
+                                    x,
+                                    y
+                                );
+                            });
+
+                            // ===== FORECAST (alsó sor – ahogy most van) =====
+                            forecastDataset.data.forEach((point, i) => {
+
+                                if (point.weather_code == null) return;
+
+                                const x = xScale.getPixelForValue(point.x);
+                                const isNearTick = xScale.ticks.some(t => {
+                                    const tx = xScale.getPixelForValue(t.value);
+                                    return Math.abs(tx - x) < 10; // tolerancia
+                                });
+                                if (!isNearTick) return;
+
+                                const y = chartArea.bottom + xScale.height + 20;
+
+                                ctx.font = "16px Arial";
+                                ctx.textAlign = "center";
+
+                                ctx.fillText(
+                                    getWeatherIcon(point.weather_code),
+                                    x,
+                                    y
+                                );
+                            });
+
+                            ctx.restore();
+                        }
+                }]
                 }
             );
 
@@ -392,6 +507,10 @@ async function loadData() {
         const format = (d) =>
             d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
+        const icon = rec.weather_code != null
+            ? getWeatherIcon(rec.weather_code)
+            : "";
+
         document.getElementById("recommendation").innerHTML = `
             <div style="
                 padding:12px;
@@ -400,7 +519,7 @@ async function loadData() {
                 font-size:15px;
                 text-align: center
             ">
-                🌿 Best time for outdoor activities and ventilation 🌿<br>
+                ${rec.recommendation_text} ${icon}<br>
                 <strong style="margin-left:3ch;">
                     ${format(start)} – ${format(end)}
                 </strong>
