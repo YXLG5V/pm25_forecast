@@ -19,6 +19,7 @@ def _parse_weather_json(data):
         "humidity": data["hourly"]["relative_humidity_2m"],
         "wind_speed": data["hourly"]["wind_speed_10m"],
         "precipitation": data["hourly"]["precipitation"],
+        "weather_code": data["hourly"]["weather_code"]
     })
 
     df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
@@ -43,7 +44,8 @@ def fetch_weather_forecast(lat, lon):
             "temperature_2m",
             "relative_humidity_2m",
             "wind_speed_10m",
-            "precipitation"
+            "precipitation",
+            "weather_code"
         ],
         forecast_days=2,
         timezone="UTC"
@@ -76,7 +78,8 @@ def fetch_weather_history(lat, lon, hours=24):
             "temperature_2m",
             "relative_humidity_2m",
             "wind_speed_10m",
-            "precipitation"
+            "precipitation",
+            "weather_code"
         ],
         timezone="UTC"
     )
