@@ -1,0 +1,17 @@
+fastapi
+uvicorn
+
+numpy
+pandas
+joblib
+
+scikit-learn
+lightgbm
+
+requests
+httpx
+openaq
+
+shap
+
+dotenv

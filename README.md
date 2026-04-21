@@ -168,18 +168,16 @@ POST /forecast
 
 {
   "location_name": "Gyor Szent Istvan",
-  "lat": 47.6875,
-  "lon": 17.6504,
   "horizon": 12
 }
 
 ### Example response
 
 {
-  "location": "Gyor Szent Istvan",
-  "forecast": [
-    {"datetime": "...", "pm25_pred": 12.3}
-  ]
+  "location": "...",
+  "history": [{ "...": "..." }],
+  "forecast": [{ "...": "..." }],
+  "recommended_window": { "...": "..." }
 }
 
 Run locally:
@@ -193,6 +191,16 @@ Demo:
 http://127.0.0.1:8000/demo
 
 ![Demo frontend](./docs/images/demo_frontend.png)
+
+## Docker
+
+Build:
+
+docker build -t pm25-forecast .
+
+Run:
+
+docker run -p 8000:8000 --env-file ./config/.env pm25-forecast
 
 ---
 

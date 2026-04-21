@@ -36,15 +36,27 @@ class ForecastService:
         # 1. pipeline
         self.pipeline = ForecastPipeline(self.model)
 
-        # 2. modell kibontása pipeline-ból
+       # 2. modell unwrap
         model = self.model.model
-        if hasattr(model, "named_steps"):
-            model = model.named_steps[list(model.named_steps.keys())[-1]]
 
-        # 3. explainer létrehozása
+        # pipeline unwrap
+        if hasattr(model, "named_steps"):
+            model = model.named_steps.get("model", model)
+
+        # ensemble
+        if isinstance(model, dict):
+            if "LGBM" in model:
+                model = model["LGBM"]
+            else:
+                model = next(iter(model.values()))
+        
+        if hasattr(model, "named_steps"):
+            model = model.named_steps.get("model", model)
+
+        # 3. explainer
         self.explainer = shap.TreeExplainer(model)
 
-        # 4. átadás pipeline-nak
+        # 4. to the pipeline
         self.pipeline.explainer = self.explainer
 
     def get_forecast(self):
