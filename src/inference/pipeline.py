@@ -82,7 +82,10 @@ class ForecastPipeline:
         history = history.copy()
         predictions = []
 
-        current_time = history["datetime"].max()
+        current_time = max(
+            history["datetime"].max(),
+            weather_fc.index.min() - timedelta(hours=1)
+        )
 
         logged_nan = False
 
