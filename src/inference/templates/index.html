@@ -321,36 +321,27 @@ async function loadData() {
         const location = document.getElementById("location-select").value;
         document.getElementById("station-name").innerText = "Loading...";
         document.getElementById("station-meta").innerText = "";
-        const selectedModels = [
-            "best",
-            "lgbm",
-            "neuralnet"
-        ];
 
-cachedResponses = await Promise.all(
+        const res = await fetch("/forecast_all", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                location_name: location
+            })
+        });
 
-    selectedModels.map(async (modelName) => {
+        const allData = await res.json();
 
-        const res = await fetch(`/forecast?model=${modelName}`, {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json"
-                    },
-                    body: JSON.stringify({
-                        location_name: location
-                    })
-                });
-
-                const data = await res.json();
-
-                return {
-                    model: modelName,
-                    data
-                };
+        cachedResponses = Object.entries(allData.models).map(
+            ([model, data]) => ({
+                model,
+                data
             })
         );
 
-        const base = cachedResponses[0].data;
+        const base = allData.models.best;
         
         const history = base.history || [];
         recommendationWindow = base.recommended_window;
@@ -373,7 +364,8 @@ cachedResponses = await Promise.all(
             month: "2-digit"
         });
 
-        const mapsUrl = `https://www.google.com/maps?q=${base.lat},${base.lon}`;
+        const mapsUrl =
+            `https://www.google.com/maps?q=${allData.lat},${allData.lon}`;
 
         // bal oldal (station)
         document.getElementById("station-name").innerHTML =

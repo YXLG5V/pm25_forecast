@@ -144,3 +144,58 @@ def forecast(
 
         "explanations": result["explanations"]
     }
+
+
+@app.post("/forecast_all")
+def forecast_all(req: ForecastRequest):
+
+    base_service = SERVICES["best"]
+
+    shared = prepare_shared_data(
+        location_name=req.location_name,
+        lag_hours=BASE_CONFIG["lag_hours"],
+        weather_lat=base_service.WEATHER_LAT,
+        weather_lon=base_service.WEATHER_LON,
+        pipeline=base_service.pipeline
+    )
+
+    station = STATIONS[req.location_name]
+
+    results = {}
+
+    for model_name, service in SERVICES.items():
+
+        result = service.predict_from_prepared(
+            history=shared["history"],
+            history_tail=shared["history_tail"],
+            weather_fc=shared["weather_fc"],
+            horizon=req.horizon
+        )
+
+        results[model_name] = {
+            "forecast": result["forecast"].to_dict(
+                orient="records"
+            )
+        }
+
+        if model_name == "best":
+
+            results[model_name]["history"] = (
+                result["history"]
+                .to_dict(orient="records")
+            )
+
+            results[model_name]["recommended_window"] = (
+                result["recommended_window"]
+            )
+
+            results[model_name]["explanations"] = (
+                result["explanations"]
+            )
+
+    return {
+        "location": req.location_name,
+        "lat": station["lat"],
+        "lon": station["lon"],
+        "models": results
+    }
