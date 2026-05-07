@@ -9,10 +9,19 @@ from .model import PM25Model
 from .pipeline import ForecastPipeline
 import pandas as pd
 import joblib
+import shap
 
 
 SHAP_MODEL_PATH = "./models/lgbm.pkl"
 
+SHAP_PIPELINE = joblib.load(SHAP_MODEL_PATH)
+
+if hasattr(SHAP_PIPELINE, "named_steps"):
+    SHAP_MODEL = SHAP_PIPELINE.named_steps["model"]
+else:
+    SHAP_MODEL = SHAP_PIPELINE
+
+GLOBAL_EXPLAINER = shap.TreeExplainer(SHAP_MODEL)
 
 class ForecastService:
 
@@ -33,21 +42,13 @@ class ForecastService:
             location_map=config["location_map"]
         )
 
-        import shap
 
         self.model = PM25Model(artifacts)
 
         # 1. pipeline
         self.pipeline = ForecastPipeline(self.model)
 
-        shap_pipeline = joblib.load(SHAP_MODEL_PATH)
-
-        if hasattr(shap_pipeline, "named_steps"):
-            shap_model = shap_pipeline.named_steps["model"]
-        else:
-            shap_model = shap_pipeline
-
-        self.explainer = shap.TreeExplainer(shap_model)
+        self.explainer = GLOBAL_EXPLAINER
 
         # 4. to the pipeline
         self.pipeline.explainer = self.explainer

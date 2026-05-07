@@ -34,6 +34,19 @@ MODEL_REGISTRY = {
     "neuralnet": "./models/neuralnet.pkl",
 }
 
+SERVICES = {}
+
+for model_name, model_path in MODEL_REGISTRY.items():
+
+    config = {
+        **BASE_CONFIG,
+        "model_path": model_path
+    }
+
+    SERVICES[model_name] = ForecastService(config)
+
+print("All models loaded.")
+
 @app.get("/demo")
 def ui():
     
@@ -55,14 +68,10 @@ def forecast(
     if model not in MODEL_REGISTRY:
         model = "best"
 
-    config = {
-        **BASE_CONFIG,
-        "model_path": MODEL_REGISTRY[model],
-        "location_name": req.location_name,
-        "horizon": req.horizon
-    }
+    service = SERVICES[model]
 
-    service = ForecastService(config)
+    service.config["location_name"] = req.location_name
+    service.config["horizon"] = req.horizon
 
     result = service.get_forecast()
 
