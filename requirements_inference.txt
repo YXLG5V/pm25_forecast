@@ -15,4 +15,4 @@ openaq
 shap
 
 dotenv
-tensorflow
+tensorflow-cpu
