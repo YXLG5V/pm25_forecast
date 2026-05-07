@@ -1,28 +1,35 @@
 # uvicorn src.inference.app:app --reload
 # http://127.0.0.1:8000/docs
-# 
+
 from fastapi import FastAPI
-from src.inference.service import ForecastService
 from fastapi.responses import FileResponse
 from pathlib import Path
+from pydantic import BaseModel
+
+from src.inference.service import (
+    ForecastService,
+    prepare_shared_data
+)
+
 from src._pollutant_client import STATIONS
 
 app = FastAPI()
 
-from pydantic import BaseModel
 
-
-# class ForecastRequest(BaseModel):
-#     location_name: str
-#     horizon: int = 12
-
+# =========================================================
+# REQUEST MODEL
+# =========================================================
 
 class ForecastRequest(BaseModel):
     location_name: str = "Gyor Szent Istvan"
     horizon: int = 12
 
+
+# =========================================================
+# CONFIG
+# =========================================================
+
 BASE_CONFIG = {
-    "model_path": "./models/model.pkl",
     "features_path": "./artifacts/features.pkl",
     "location_map": "./artifacts/location_mapping.pkl",
     "lag_hours": 48
@@ -33,6 +40,11 @@ MODEL_REGISTRY = {
     "lgbm": "./models/lgbm.pkl",
     "neuralnet": "./models/neuralnet.pkl",
 }
+
+
+# =========================================================
+# LOAD SERVICES
+# =========================================================
 
 SERVICES = {}
 
@@ -47,17 +59,29 @@ for model_name, model_path in MODEL_REGISTRY.items():
 
 print("All models loaded.")
 
-@app.get("/demo")
-def ui():
-    
-    BASE_DIR = Path(__file__).resolve().parent
 
-    return FileResponse(BASE_DIR / "templates" / "index.html")
+# =========================================================
+# ROUTES
+# =========================================================
 
 @app.get("/")
 def health():
     return {"status": "ok"}
 
+
+@app.get("/demo")
+def ui():
+
+    BASE_DIR = Path(__file__).resolve().parent
+
+    return FileResponse(
+        BASE_DIR / "templates" / "index.html"
+    )
+
+
+# =========================================================
+# FORECAST
+# =========================================================
 
 @app.post("/forecast")
 def forecast(
@@ -70,20 +94,53 @@ def forecast(
 
     service = SERVICES[model]
 
-    service.config["location_name"] = req.location_name
-    service.config["horizon"] = req.horizon
+    # =====================================================
+    # SHARED DATA FETCH
+    # =====================================================
 
-    result = service.get_forecast()
+    shared = prepare_shared_data(
+        location_name=req.location_name,
+        lag_hours=service.config["lag_hours"],
+        weather_lat=service.WEATHER_LAT,
+        weather_lon=service.WEATHER_LON,
+        pipeline=service.pipeline
+    )
+
+    # =====================================================
+    # MODEL PREDICTION
+    # =====================================================
+
+    result = service.predict_from_prepared(
+        history=shared["history"],
+        history_tail=shared["history_tail"],
+        weather_fc=shared["weather_fc"],
+        horizon=req.horizon
+    )
+
+    # =====================================================
+    # STATION METADATA
+    # =====================================================
 
     station = STATIONS[req.location_name]
 
     return {
         "location": req.location_name,
         "model": model,
+
         "lat": station["lat"],
         "lon": station["lon"],
-        "history": result["history"].to_dict(orient="records"),
-        "forecast": result["forecast"].to_dict(orient="records"),
-        "recommended_window": result["recommended_window"],
+
+        "history": result["history"].to_dict(
+            orient="records"
+        ),
+
+        "forecast": result["forecast"].to_dict(
+            orient="records"
+        ),
+
+        "recommended_window": result[
+            "recommended_window"
+        ],
+
         "explanations": result["explanations"]
     }
