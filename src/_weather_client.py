@@ -13,16 +13,30 @@ from datetime import datetime, timedelta, UTC
 
 def _parse_weather_json(data):
 
+    if "hourly" not in data:
+
+        print("Invalid weather API response:")
+        print(data)
+
+        raise RuntimeError(
+            "Weather API response missing 'hourly'"
+        )
+
+    hourly = data["hourly"]
+
     df = pd.DataFrame({
-        "datetime": data["hourly"]["time"],
-        "temperature": data["hourly"]["temperature_2m"],
-        "humidity": data["hourly"]["relative_humidity_2m"],
-        "wind_speed": data["hourly"]["wind_speed_10m"],
-        "precipitation": data["hourly"]["precipitation"],
-        "weather_code": data["hourly"]["weather_code"]
+        "datetime": hourly["time"],
+        "temperature": hourly["temperature_2m"],
+        "humidity": hourly["relative_humidity_2m"],
+        "wind_speed": hourly["wind_speed_10m"],
+        "precipitation": hourly["precipitation"],
+        "weather_code": hourly["weather_code"]
     })
 
-    df["datetime"] = pd.to_datetime(df["datetime"], utc=True)
+    df["datetime"] = pd.to_datetime(
+        df["datetime"],
+        utc=True
+    )
 
     return df.set_index("datetime")
 
@@ -51,7 +65,15 @@ def fetch_weather_forecast(lat, lon):
         timezone="UTC"
     )
 
-    data = requests.get(url, params=params).json()
+    response = requests.get(
+        url,
+        params=params,
+        timeout=10
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
 
     return _parse_weather_json(data)
 
@@ -84,7 +106,15 @@ def fetch_weather_history(lat, lon, hours=24):
         timezone="UTC"
     )
 
-    data = requests.get(url, params=params, timeout=10).json()
+    response = requests.get(
+        url,
+        params=params,
+        timeout=10
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
 
     df = _parse_weather_json(data)
 
