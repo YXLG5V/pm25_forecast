@@ -12,10 +12,21 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import mean_absolute_error, r2_score
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.impute import SimpleImputer
+from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
 
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
+
+USE_LOG_TARGET = False
+np.random.seed(42)
+sampler=optuna.samplers.TPESampler(seed=42)
+
+def transform_target(y):
+    return np.log1p(y) if USE_LOG_TARGET else y
+
+def inverse_target(y):
+    return np.maximum(0, np.expm1(y)) if USE_LOG_TARGET else y
 
 # =========================
 # LOAD DATA
@@ -23,9 +34,8 @@ from xgboost import XGBRegressor
 train = pd.read_parquet("./data/preprocessed/train.parquet")
 test  = pd.read_parquet("./data/preprocessed/test.parquet")
 FEATURES = joblib.load("./artifacts/features.pkl")
-LOCATION_MAPPING = joblib.load("./artifacts/location_mapping.pkl")
 
-train = train.sort_values(["datetime", "location"])
+train = train.sort_values(["location", "datetime"])
 test = test.sort_values(["location", "datetime"])
 
 train["pm25_next"] = train.groupby("location")["pm25"].shift(-1)
@@ -58,7 +68,7 @@ y_train = train[TARGET]
 X_test = test[FEATURES]
 y_test = test[TARGET]
 
-y_train_log = np.log1p(y_train)
+
 
 # =========================
 # TimeSeries CV
@@ -100,7 +110,7 @@ MODEL_CONFIGS = {
     "rf": lambda trial: (
         {
             "n_estimators": trial.suggest_int("n_estimators", 200, 800),
-            "max_depth": trial.suggest_int("max_depth", 5, 30),
+            "max_depth": trial.suggest_int("max_depth", 4, 20),
             "min_samples_split": trial.suggest_int("min_samples_split", 2, 20),
             "min_samples_leaf": trial.suggest_int("min_samples_leaf", 1, 10),
             "max_features": trial.suggest_categorical("max_features", ["sqrt", "log2", None]),
@@ -122,6 +132,7 @@ MODEL_CONFIGS = {
             "subsample": trial.suggest_float("subsample", 0.6, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
             "random_state": 42,
+            "n_jobs": -1,
             "verbosity": -1
         },
         lambda params: LGBMRegressor(**params)
@@ -137,6 +148,8 @@ MODEL_CONFIGS = {
             "max_depth": trial.suggest_int("max_depth", 3, 10),
             "subsample": trial.suggest_float("subsample", 0.6, 1.0),
             "colsample_bytree": trial.suggest_float("colsample_bytree", 0.6, 1.0),
+            "tree_method": "hist",
+            "n_jobs": -1,
             "random_state": 42
         },
         lambda params: XGBRegressor(**params)
@@ -151,6 +164,7 @@ MODEL_CONFIGS = {
         },
         lambda params: Pipeline([
             ("imputer", SimpleImputer(strategy="median")),
+            ("scaler", StandardScaler()),
             ("model", Ridge(**params))
         ])
     )
@@ -163,7 +177,6 @@ def objective(trial):
 
     # --- model kiválasztása ---
     params, builder = MODEL_CONFIGS[MODEL_TYPE](trial)
-    model_builder = lambda: builder(params)
 
     # =========================
     # CV LOOP
@@ -175,14 +188,14 @@ def objective(trial):
         X_tr = X_train.iloc[train_idx]
         X_val = X_train.iloc[val_idx]
 
-        y_tr = y_train_log.iloc[train_idx]
+        y_tr = transform_target(y_train.iloc[train_idx])
         y_val = y_train.iloc[val_idx]
 
-        model = model_builder()
+        model = builder(params)
         model.fit(X_tr, y_tr)
 
-        pred_log = model.predict(X_val)
-        pred = np.maximum(0, np.expm1(pred_log))
+        pred_raw = model.predict(X_val)
+        pred = inverse_target(pred_raw)
 
         maes.append(mean_absolute_error(y_val, pred))
 
@@ -191,7 +204,10 @@ def objective(trial):
 # =========================
 # RUN OPTUNA
 # =========================
-study = optuna.create_study(direction="minimize")
+study = optuna.create_study(
+    direction="minimize",
+    sampler=sampler
+)
 study.optimize(objective, n_trials=50, show_progress_bar=True)
 
 print("\nBest params:")
@@ -206,6 +222,7 @@ params = study.best_params
 if MODEL_TYPE == "ridge":
     best_model = Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
         ("model", Ridge(**params))
     ])
 else:
@@ -218,13 +235,13 @@ else:
 
     best_model = MODEL_CLASSES[MODEL_TYPE](**params, random_state=42)
 
-best_model.fit(X_train, y_train_log)
+best_model.fit(X_train, transform_target(y_train))
 
 # =========================
 # TEST
 # =========================
-pred_log = best_model.predict(X_test)
-pred = np.maximum(0, np.expm1(pred_log))
+pred_raw = best_model.predict(X_test)
+pred = inverse_target(pred_raw)
 
 mae = mean_absolute_error(y_test, pred)
 r2 = r2_score(y_test, pred)

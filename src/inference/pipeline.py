@@ -140,7 +140,9 @@ class ForecastPipeline:
             effects = []
 
             for i, f in enumerate(self.features):
+
                 v = row[i]
+
                 if f in self.IGNORE_FEATURES:
                     continue
 
@@ -150,21 +152,13 @@ class ForecastPipeline:
                     "direction": "up" if v > 0 else "down"
                 })
 
-            # top 5
             effects = sorted(
                 effects,
                 key=lambda x: abs(x["value"]),
                 reverse=True
             )[:5]
 
-            if isinstance(model, dict):
-                preds = []
-                for m in model.values():
-                    p = np.maximum(0, np.expm1(m.predict(X)[0]))
-                    preds.append(p)
-                pred = np.mean(preds)
-            else:
-                pred = np.maximum(0, np.expm1(model.predict(X)[0]))
+            pred = self.model.predict(X)[0]
                 
 
             history.loc[

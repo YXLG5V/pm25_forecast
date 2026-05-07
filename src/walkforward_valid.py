@@ -19,13 +19,13 @@ from _preprocessing import (
     interpolate_station
 )
 from _feature_engineering import build_features
-
+from _model_wrappers import NNWrapper
 
 # ============================================================
 # CONFIG
 # ============================================================
 
-MODEL_PATH = "./models/model.pkl"
+MODEL_PATH = "./models/model.old"
 FEATURES_PATH = "./artifacts/features.pkl"
 LOCATION_MAPPING_PATH = "./artifacts/location_mapping.pkl"
 
@@ -35,7 +35,13 @@ LON = 17.6504
 
 HORIZON = 12
 LAG_HOURS = 48
-VALIDATION_HOURS = 120
+VALIDATION_HOURS = 100
+USE_LOG_TARGET = True
+
+def inverse_target(y):
+    if USE_LOG_TARGET:
+        return np.maximum(0, np.expm1(y))
+    return y
 
 
 # ============================================================
@@ -81,10 +87,56 @@ history_full = build_base_dataset(
     weather=weather_hist
 ).sort_values("datetime")
 
+critical_cols = [
+    "pm25",
+    "pm10",
+    "temperature",
+    "humidity",
+    "wind_speed",
+    "precipitation"
+]
+
+history_full[critical_cols] = (
+    history_full[critical_cols]
+    .replace([np.inf, -np.inf], np.nan)
+    .interpolate(limit_direction="both")
+    .ffill()
+    .bfill()
+)
+
 
 # ============================================================
 # WALKFORWARD
 # ============================================================
+
+def predict_model(model, X):
+    """
+    Egységes predikció:
+    - kezeli az ensemble-t
+    - kezeli a KerasRegressor-t
+    - kezeli a log targetet
+    """
+
+    if isinstance(model, dict):
+        preds = []
+
+        for m in model.values():
+            p_raw = m.predict(X)
+
+            # sklearn: shape (1,)
+            # keras: shape (1, 1)
+            p_raw = np.asarray(p_raw).reshape(-1)[0]
+
+            p = inverse_target(p_raw)
+            preds.append(p)
+
+        return np.mean(preds)
+
+    else:
+        p_raw = model.predict(X)
+        p_raw = np.asarray(p_raw).reshape(-1)[0]
+
+        return inverse_target(p_raw)
 
 results = []
 
@@ -138,18 +190,7 @@ for i in tqdm(range(start_idx, end_idx)):
 
         # --- PREDICTION ---
 
-        if isinstance(model, dict):
-
-            ensemble_preds = []
-            for m in model.values():
-                p = np.maximum(0, np.expm1(m.predict(X)[0]))
-                ensemble_preds.append(p)
-            
-            pred = np.mean(ensemble_preds)
-
-        else:
-            
-            pred = np.maximum(0, np.expm1(model.predict(X)[0]))
+        pred = predict_model(model, X)
 
 
         # --- write back ---

@@ -35,6 +35,14 @@ from _preprocessing import (
 from _feature_engineering import build_features      # feature creation
 from datetime import datetime
 
+import tensorflow as tf
+from _model_wrappers import NNWrapper
+
+USE_LOG_TARGET = False
+
+def inverse_target(y):
+    return np.maximum(0, np.expm1(y)) if USE_LOG_TARGET else np.maximum(0, y)
+
 # Modell és feature lista
 MODEL_PATH = "./models/model.pkl"
 FEATURES_PATH = "./artifacts/features.pkl"
@@ -81,7 +89,7 @@ assert LOCATION_NAME in mapping, \
 dbg("Pollution letöltés indul", level="DATA")
 pollutants = fetch_station_pollutants(
     location_name=LOCATION_NAME,
-    hours=48
+    hours=LAG_HOURS
 )
 
 # shape = (időpontok száma, változók)
@@ -125,6 +133,16 @@ history = build_base_dataset(
 )
 
 history = interpolate_station(history)
+
+critical_cols = ["pm25", "pm10", "no2", "so2"]
+
+history[critical_cols] = (
+    history[critical_cols]
+    .replace([np.inf, -np.inf], np.nan)
+    .interpolate(limit_direction="both")
+    .ffill()
+    .bfill()
+)
 
 # ezt csak plothoz
 history_real = history.copy()
@@ -209,14 +227,13 @@ for step in range(1, HORIZON + 1):
     
         preds = []
         for m in model.values():
-            p = np.maximum(0, np.expm1(m.predict(X)[0]))
+            p = inverse_target(m.predict(X)[0])
             preds.append(p)
         
         pred = np.mean(preds)
 
     else:
-        # modell log-space-ben tanult, visszaalakítás
-        pred = np.maximum(0, np.expm1(model.predict(X)[0]))
+        pred = inverse_target(model.predict(X)[0])
     
     dbg(f"Pred value: {pred}")
 

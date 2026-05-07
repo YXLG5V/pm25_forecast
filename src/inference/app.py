@@ -28,7 +28,11 @@ BASE_CONFIG = {
     "lag_hours": 48
 }
 
-service = ForecastService(BASE_CONFIG)
+MODEL_REGISTRY = {
+    "best": "./models/model.pkl",
+    "lgbm": "./models/lgbm.pkl",
+    "neuralnet": "./models/neuralnet.pkl",
+}
 
 @app.get("/demo")
 def ui():
@@ -43,20 +47,30 @@ def health():
 
 
 @app.post("/forecast")
-def forecast(req: ForecastRequest):
+def forecast(
+    req: ForecastRequest,
+    model: str = "best"
+):
 
-    service.config = {
-        **service.config,
+    if model not in MODEL_REGISTRY:
+        model = "best"
+
+    config = {
+        **BASE_CONFIG,
+        "model_path": MODEL_REGISTRY[model],
         "location_name": req.location_name,
         "horizon": req.horizon
     }
-    
+
+    service = ForecastService(config)
+
     result = service.get_forecast()
 
     station = STATIONS[req.location_name]
 
     return {
         "location": req.location_name,
+        "model": model,
         "lat": station["lat"],
         "lon": station["lon"],
         "history": result["history"].to_dict(orient="records"),

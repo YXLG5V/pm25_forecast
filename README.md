@@ -30,9 +30,11 @@ https://pm25-forecast.onrender.com/demo
 - End-to-end ML pipeline (data → model → API)
 - Time-series aware validation
 - Feature engineering driven performance
-- Ensemble modeling for stability
+- Neural network enhanced forecasting
+- Ensemble modeling for stability (ANN + Ridge)
 - Model interpretability using SHAP
 - Production-ready REST API (FastAPI)
+- Interactive multi-model forecast demo
 
 ---
 
@@ -95,11 +97,13 @@ https://pm25-forecast.onrender.com/demo
 
 ## Models
 
-- RandomForest
-- HistGradientBoosting
 - LightGBM
 - XGBoost
-- Ridge (baseline)
+- Artificial Neural Network (ANN)
+- HistGradientBoosting
+- RandomForest
+- Ridge
+- ANN + Ridge ensemble meta-model
 
 ### Optimization
 - Optuna
@@ -256,10 +260,9 @@ Saved artifacts:
 - Hybrid recursive + direct multi-horizon models
 - Better extreme event modeling
 - Additional meteorological data
-- Deep learning (LSTM / Transformers)
+- Sequence models (LSTM / Temporal Transformers)
 - Docker deployment
 - Database integration
-- Frontend implementation
 
 ---
 
@@ -275,6 +278,9 @@ Saved artifacts:
 - LightGBM
 - XGBoost
 - Optuna
+
+### Deep Learning
+- TensorFlow
 
 ### Time Series Analysis
 - statsmodels

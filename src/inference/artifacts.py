@@ -1,5 +1,8 @@
 import joblib
+import sys
+import src._model_wrappers as model_wrappers
 
+sys.modules["_model_wrappers"] = model_wrappers
 
 class ModelArtifacts:
 

@@ -17,3 +17,4 @@ statsmodels
 optuna
 lightgbm
 xgboost
+tensorflow

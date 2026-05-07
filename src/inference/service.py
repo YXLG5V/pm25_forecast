@@ -8,6 +8,10 @@ from .artifacts import ModelArtifacts
 from .model import PM25Model
 from .pipeline import ForecastPipeline
 import pandas as pd
+import joblib
+
+
+SHAP_MODEL_PATH = "./models/lgbm.pkl"
 
 
 class ForecastService:
@@ -31,30 +35,19 @@ class ForecastService:
 
         import shap
 
-        self.model = artifacts
+        self.model = PM25Model(artifacts)
 
         # 1. pipeline
         self.pipeline = ForecastPipeline(self.model)
 
-       # 2. modell unwrap
-        model = self.model.model
+        shap_pipeline = joblib.load(SHAP_MODEL_PATH)
 
-        # pipeline unwrap
-        if hasattr(model, "named_steps"):
-            model = model.named_steps.get("model", model)
+        if hasattr(shap_pipeline, "named_steps"):
+            shap_model = shap_pipeline.named_steps["model"]
+        else:
+            shap_model = shap_pipeline
 
-        # ensemble
-        if isinstance(model, dict):
-            if "LGBM" in model:
-                model = model["LGBM"]
-            else:
-                model = next(iter(model.values()))
-        
-        if hasattr(model, "named_steps"):
-            model = model.named_steps.get("model", model)
-
-        # 3. explainer
-        self.explainer = shap.TreeExplainer(model)
+        self.explainer = shap.TreeExplainer(shap_model)
 
         # 4. to the pipeline
         self.pipeline.explainer = self.explainer
@@ -174,7 +167,7 @@ class ForecastService:
                         representative_code = None
 
                 pm_ok = avg_pm < PM_THRESHOLD
-                weather_ok = weather_ratio >= 0.5
+                weather_ok = valid_weather.isin(GOOD_WEATHER).all()
 
                 if pm_ok and weather_ok:
                     recommendation_text = "🌿 Best time for outdoor activities and ventilation"

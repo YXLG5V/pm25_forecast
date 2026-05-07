@@ -93,6 +93,27 @@ canvas {
     border-bottom: 1px solid rgba(0,0,0,0.8);
 }
 
+#model-toggles {
+    margin-top: 14px;
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    font-size: 14px;
+}
+
+#model-toggles label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+
+}
+
+#recommendation-card {
+    padding-top: 10px;
+    padding-bottom: 10px;
+}
+
 </style>
 
 </head>
@@ -110,6 +131,57 @@ canvas {
             <option value="Gyor Szent Istvan" selected>Győr - Szent István út</option>
             <option value="VS">Vámosszabadi</option>
         </select>
+
+        <div id="top-row"
+     style="
+        display:flex;
+        justify-content:space-between;
+        align-items:center;
+        gap:20px;
+        margin-top:12px;
+     ">
+
+    <div style="flex:1;"></div>
+
+    <div id="model-toggles"
+                style="
+                    display:flex;
+                    align-items:center;
+                    gap:14px;
+                    font-size:15px;
+                ">
+
+                <label style="opacity:0.75;">
+                    <input
+                        type="checkbox"
+                        value="best"
+                        checked
+                        disabled
+                        onclick="return false;"
+                    >
+                    Ensemble (ANN + Ridge)
+                </label>
+
+                <label>
+                    <input
+                        type="checkbox"
+                        value="lgbm"
+                        onchange="toggleModel(this)"
+                    >
+                    LGBM
+                </label>
+
+                <label>
+                    <input
+                        type="checkbox"
+                        value="neuralnet"
+                        onchange="toggleModel(this)"
+                    >
+                    NeuralNet
+                </label>
+
+            </div>
+        </div>
 
         <div id="current">
             <div style="font-size:13px;color:#666;margin-bottom:4px;">Station:</div>
@@ -131,8 +203,21 @@ canvas {
     </div>
 
     <div class="card">
-        <h3>Drivers of the forecast</h3>
+
+        <h3 style="margin-bottom:6px;">
+            Drivers of the forecast
+        </h3>
+
+        <div style="
+            font-size:13px;
+            color:#666;
+            margin-bottom:14px;
+        ">
+            Feature contributions derived from the LGBM model (SHAP)
+        </div>
+
         <div id="explanations"></div>
+
     </div>
 
 </div>
@@ -140,6 +225,13 @@ canvas {
 <script>
 
 let chart = null;
+let cachedResponses = [];
+
+const MODEL_COLORS = {
+    best: "#f39c12",
+    lgbm: "#2ecc71",
+    neuralnet: "#ff00aa"
+};
 let recommendationWindow = null;
 
 /* ===== AQI COLOR ===== */
@@ -207,6 +299,20 @@ function getWeatherIcon(code, datetime) {
 
     return "☁️"; // fallback
 }
+function toggleModel(checkbox) {
+
+    if (!chart) return;
+
+    const dataset = chart.data.datasets.find(
+        d => d.modelKey === checkbox.value
+    );
+
+    if (!dataset) return;
+
+    dataset.hidden = !checkbox.checked;
+
+    chart.update('none');
+}
 
 async function loadData() {
 
@@ -215,23 +321,41 @@ async function loadData() {
         const location = document.getElementById("location-select").value;
         document.getElementById("station-name").innerText = "Loading...";
         document.getElementById("station-meta").innerText = "";
-        const res = await fetch("/forecast", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                location_name: location
+        const selectedModels = [
+            "best",
+            "lgbm",
+            "neuralnet"
+        ];
+
+cachedResponses = await Promise.all(
+
+    selectedModels.map(async (modelName) => {
+
+        const res = await fetch(`/forecast?model=${modelName}`, {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({
+                        location_name: location
+                    })
+                });
+
+                const data = await res.json();
+
+                return {
+                    model: modelName,
+                    data
+                };
             })
-        });
+        );
 
-        const data = await res.json();
+        const base = cachedResponses[0].data;
         
-        const history = data.history || [];
-        const forecast = data.forecast || [];
-        recommendationWindow = data.recommended_window;
+        const history = base.history || [];
+        recommendationWindow = base.recommended_window;
 
-        if (!forecast.length) return;
+        if (!history.length) return;
 
         // ===== CURRENT =====
         const last = history[history.length - 1];
@@ -249,7 +373,7 @@ async function loadData() {
             month: "2-digit"
         });
 
-        const mapsUrl = `https://www.google.com/maps?q=${data.lat},${data.lon}`;
+        const mapsUrl = `https://www.google.com/maps?q=${base.lat},${base.lon}`;
 
         // bal oldal (station)
         document.getElementById("station-name").innerHTML =
@@ -272,12 +396,7 @@ async function loadData() {
             weather_code: p.weather_code
         }));
 
-        const forecastPoints = forecast.map(p => ({
-            x: new Date(p.datetime),
-            y: p.pm25_pred,
-            weather_code: p.weather_code
-        }));
-        
+       
         const lastPoint = historyPoints[historyPoints.length - 1];
 
         const datasets = [
@@ -285,18 +404,59 @@ async function loadData() {
                 label: "History",
                 data: historyPoints,
                 borderColor: "#3498db",
+                borderWidth: 3,
                 tension: 0.3,
-                pointRadius: 3
-            },
-            {
-                label: "Forecast",
-                data: [lastPoint, ...forecastPoints],
-                borderColor: "#f39c12",
-                borderDash: [6,4],
-                tension: 0.3,
-                pointRadius: 3
+                pointRadius: 3,
+                fill: false
             }
         ];
+
+        cachedResponses.forEach(r => {
+
+            const forecastPoints = r.data.forecast.map(p => ({
+                x: new Date(p.datetime),
+                y: p.pm25_pred,
+                weather_code: p.weather_code
+            }));
+
+            const isBest = r.model === "best";
+            const checkbox = document.querySelector(
+                `#model-toggles input[value="${r.model}"]`
+            );
+
+            datasets.push({
+
+                modelKey: r.model,
+
+                hidden:
+                    r.model !== "best" &&
+                    checkbox &&
+                    !checkbox.checked,
+
+                label:
+                    isBest
+                        ? "Forecast (ANN + Ridge)"
+                        : r.model === "lgbm"
+                            ? "LGBM"
+                            : "NeuralNet",
+
+                data: [lastPoint, ...forecastPoints],
+
+                borderColor: isBest
+                    ? MODEL_COLORS[r.model]
+                    : MODEL_COLORS[r.model] + "66",
+
+                borderDash: isBest ? [] : [6,4],
+
+                borderWidth: isBest ? 4 : 2,
+
+                pointRadius: isBest ? 3 : 0,
+
+                tension: 0.3,
+                fill: false
+            });
+
+            });
         
 
         // ===== CHART =====
@@ -333,9 +493,17 @@ async function loadData() {
                                     }
                                 }
                             },
-                            legend: {
-                                display: true
-                            }
+                                legend: {
+                                    display: true,
+                                    labels: {
+                                        usePointStyle: false,
+                                        boxWidth: 40,
+                                        padding: 16,
+                                        font: {
+                                            size: 14
+                                        }
+                                    }
+                                }
                         },
 
                         scales: {
@@ -401,7 +569,9 @@ async function loadData() {
                             const { ctx, scales, chartArea } = chart;
                             const xScale = scales.x;
 
-                            const forecastDataset = chart.data.datasets[1];
+                            const forecastDataset = chart.data.datasets.find(
+                                d => d.modelKey === "best"
+                            );
                             const historyDataset = chart.data.datasets[0];
 
                             ctx.save();
@@ -472,9 +642,9 @@ async function loadData() {
         const container = document.getElementById("explanations");
         container.innerHTML = "";
 
-        if (data.explanations && data.explanations.length) {
+        if (base.explanations && base.explanations.length) {
 
-            data.explanations.forEach(hour => {
+            base.explanations.forEach(hour => {
 
                 const card = document.createElement("div");
                 card.className = "driver-card";
@@ -513,8 +683,8 @@ async function loadData() {
             });
         }
 
-        if (data.recommended_window) {
-        const rec = data.recommended_window;
+        if (base.recommended_window) {
+        const rec = base.recommended_window;
 
         const start = new Date(rec.start);
         const end = new Date(rec.end);
@@ -543,6 +713,8 @@ async function loadData() {
                 </span>
             </div>
         `;
+    }else {
+        document.getElementById("recommendation").innerHTML = "";
     }
 
     } catch (e) {

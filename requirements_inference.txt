@@ -15,3 +15,4 @@ openaq
 shap
 
 dotenv
+tensorflow

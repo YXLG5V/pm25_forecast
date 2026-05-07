@@ -20,6 +20,12 @@ import shap
 MODEL_PATH = "./models/model.pkl"
 FEATURES_PATH = "./artifacts/features.pkl"
 LOCATION_MAPPING_PATH = "./artifacts/location_mapping.pkl"
+LGBM_MODEL_PATH = "./models/lgbm.pkl"
+
+USE_LOG_TARGET = False
+
+def inverse_target(y):
+    return np.maximum(0, np.expm1(y)) if USE_LOG_TARGET else y
 
 # ============================================================
 # 0. Load model
@@ -27,7 +33,6 @@ LOCATION_MAPPING_PATH = "./artifacts/location_mapping.pkl"
 
 model = joblib.load(MODEL_PATH)
 FEATURES = joblib.load(FEATURES_PATH)
-LOCATION_MAPPING = joblib.load(LOCATION_MAPPING_PATH)
 print("Model loaded: ", MODEL_PATH)
 
 # ============================================================
@@ -67,26 +72,29 @@ train = train.dropna(subset=columns)
 test  = test.dropna(subset=columns)
 
 # ============================================================
-# 2. Train
+# 2. Prediction
 # ============================================================
 
 X_test = test[FEATURES]
-y_test = test["pm25_next"]
+y_test = test[TARGET]
 
-# y_pred_log = model.predict(X_test)
-# y_pred = np.maximum(0, np.expm1(y_pred_log))
+if isinstance(model, dict):
 
-if isinstance(model, dict):  # ensemble
     preds = []
-    for m in model.values():
-        p_log = m.predict(X_test)
-        p = np.maximum(0, np.expm1(p_log))
-        preds.append(p)
-    y_pred = np.mean(preds, axis=0)
-else:
-    y_pred_log = model.predict(X_test)
-    y_pred = np.maximum(0, np.expm1(y_pred_log))
 
+    for m in model.values():
+
+        pred_raw = m.predict(X_test)
+        pred = inverse_target(pred_raw)
+
+        preds.append(pred)
+
+    y_pred = np.mean(preds, axis=0)
+
+else:
+
+    pred_raw = model.predict(X_test)
+    y_pred = inverse_target(pred_raw)
 
 # ============================================================
 # 3. 1-step sanity validation
@@ -185,18 +193,15 @@ plt.show()
 
 #Feature permutation importance grafikon
 
-y_test_log = np.log1p(y_test)
+y_test_used = np.log1p(y_test) if USE_LOG_TARGET else y_test
 
-# --- ensemble eset kezelése ---
-if isinstance(model, dict):
-    model_for_perm = model["LGBM"]
-else:
-    model_for_perm = model
+# --- permutation importance mindig LGBM modellen ---
+model_for_perm = joblib.load(LGBM_MODEL_PATH)
 
 result = permutation_importance(
     model_for_perm,
     X_test,
-    y_test_log,
+    y_test_used,
     n_repeats=5,
     random_state=42,
     n_jobs=-1
@@ -237,13 +242,10 @@ plt.show()
 # ============================================================
 
 print("\nRunning SHAP analysis...")
+print("SHAP model: LGBM")
 
-if isinstance(model, dict):
-    model_for_shap = model["LGBM"].named_steps["model"]
-elif hasattr(model, "named_steps"):
-    model_for_shap = model.named_steps["model"]
-else:
-    model_for_shap = model
+lgbm_pipeline = joblib.load(LGBM_MODEL_PATH)
+model_for_shap = lgbm_pipeline.named_steps["model"]
 
 X_sample = X_test.sample(min(2000, len(X_test)), random_state=42)
 
@@ -267,9 +269,6 @@ shap.summary_plot(shap_values, X_sample, plot_type="bar")
 # 5.3. TOP FEATURE AUTOMATIKUSAN
 # ============================================================
 
-import numpy as np
-import pandas as pd
-
 shap_importance = np.abs(shap_values).mean(axis=0)
 feat_imp = pd.Series(shap_importance, index=X_sample.columns).sort_values(ascending=False)
 
@@ -282,8 +281,6 @@ top_features = feat_imp.head(10).to_dict()
 # ============================================================
 # 6. Save metrics
 # ============================================================
-
-top_features = feat_imp.head(10).to_dict()
 
 metrics = {
     "MAE": mae,

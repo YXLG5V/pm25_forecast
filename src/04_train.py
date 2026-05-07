@@ -1,34 +1,37 @@
-# ============================================================
-# TRAIN.PY
-# ============================================================
-
 from sklearn.ensemble import RandomForestRegressor, HistGradientBoostingRegressor
 from lightgbm import LGBMRegressor
 from xgboost import XGBRegressor
 from sklearn.linear_model import Ridge
 from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
-
 import pandas as pd
 import numpy as np
 import joblib
-from sklearn.metrics import (
-    mean_absolute_error,
-    r2_score
-)
-
+from sklearn.metrics import mean_absolute_error, r2_score
 import matplotlib.pyplot as plt
-
 import os
 
-# ============================================================
-# 1. Load data
-# ============================================================
+from sklearn.preprocessing import StandardScaler
+import tensorflow as tf
+from _model_wrappers import NNWrapper
 
+np.random.seed(42)
+tf.random.set_seed(42)
+
+# Log target kapcsoló
+USE_LOG_TARGET = False
+PLOT = False
+
+def transform_target(y):
+    return np.log1p(y) if USE_LOG_TARGET else y
+
+def inverse_target(y):
+    return np.maximum(0, np.expm1(y)) if USE_LOG_TARGET else y
+
+# Adatok betöltése
 train = pd.read_parquet("./data/preprocessed/train.parquet")
 test  = pd.read_parquet("./data/preprocessed/test.parquet")
 FEATURES = joblib.load("./artifacts/features.pkl")
-LOCATION_MAPPING = joblib.load("./artifacts/location_mapping.pkl")
 ENSEMBLE_PATH = "./models/models_ensemble.pkl"
 
 train = train.sort_values(["location", "datetime"])
@@ -37,6 +40,7 @@ test  = test.sort_values(["location", "datetime"])
 train["pm25_next"] = train.groupby("location")["pm25"].shift(-1)
 test["pm25_next"]  = test.groupby("location")["pm25"].shift(-1)
 
+# NAN-ok törlése
 TARGET = "pm25_next"
 
 columns = [
@@ -58,31 +62,19 @@ columns = [
 train = train.dropna(subset=columns)
 test  = test.dropna(subset=columns)
 
-# ============================================================
-# 2. Train
-# ============================================================
-
+# Train és teszt adatok létrehozása
 X_train = train[FEATURES]
 y_train = train[TARGET]
 
 X_test = test[FEATURES]
 y_test = test[TARGET]
 
-# --- LOG TRANSFORM TARGET ---
-y_train_log = np.log1p(y_train)
+y_train_used = transform_target(y_train)
 
 print("Train:", X_train.shape)
 print("Test :", X_test.shape)
 
-print("Train period:", train.index.min(), "→", train.index.max())
-print("Test period :", test.index.min(), "→", test.index.max())
-
-# ============================================================
-# 3. Models
-# ============================================================
-
-# Optimized
-# Optimized
+# Model paraméterezés
 models = {
     "RandomForest": Pipeline([
         ("model", RandomForestRegressor(
@@ -108,15 +100,15 @@ models = {
     ]),
 
     "LGBM": Pipeline([
-    ("model", LGBMRegressor(
-        n_estimators=723,
-        learning_rate=0.012885472793169907,
-        max_depth=11,
-        num_leaves=71,
-        subsample=0.6904437214202783,
-        colsample_bytree=0.6924371848724423,
-        random_state=42
-    ))
+        ("model", LGBMRegressor(
+            n_estimators=723,
+            learning_rate=0.012885472793169907,
+            max_depth=11,
+            num_leaves=71,
+            subsample=0.6904437214202783,
+            colsample_bytree=0.6924371848724423,
+            random_state=42
+        ))
     ]),
 
     "XGB": Pipeline([
@@ -132,38 +124,150 @@ models = {
 
     "Ridge": Pipeline([
         ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
         ("model", Ridge(alpha=0.01007089724896645))
     ]),
 }
-
 
 print("\nTraining models...")
 results = []
 trained_models = {}
 
+# BASELINE (lag1)
+baseline_pred = X_test["pm25_lag1"]
+
+results.append({
+    "model": "Baseline_lag1",
+    "MAE": mean_absolute_error(y_test, baseline_pred),
+    "R2": r2_score(y_test, baseline_pred)
+})
+
+# Sklearn models
 for name, model in models.items():
     
-    # log target
-    model.fit(X_train, y_train_log)
-
+    model.fit(X_train, y_train_used)
     trained_models[name] = model
     
-    pred_log = model.predict(X_test)
-    pred = np.maximum(0, np.expm1(pred_log))
-    
-    mae = mean_absolute_error(y_test, pred)
-    r2 = r2_score(y_test, pred)
+    pred_raw = model.predict(X_test)
+    pred = inverse_target(pred_raw)
     
     results.append({
         "model": name,
-        "MAE": mae,
-        "R2": r2
+        "MAE": mean_absolute_error(y_test, pred),
+        "R2": r2_score(y_test, pred)
     })
 
-# ============================================================
-# ENSEMBLE (ha létezik)
-# ============================================================
+# Neural network implementáció
 
+# SPLIT a nyers adatokon
+val_ratio = 0.2
+n = len(X_train)
+split = int(n * (1 - val_ratio))
+
+X_tr_raw = X_train.iloc[:split]
+X_val_raw = X_train.iloc[split:]
+
+y_tr = y_train_used.values[:split]
+y_val = y_train_used.values[split:]
+
+
+# IMPUTER (csak trainen fit)
+imputer = SimpleImputer(strategy="median")
+
+X_tr_imp = imputer.fit_transform(X_tr_raw)
+X_val_imp = imputer.transform(X_val_raw)
+
+# SCALER (csak trainen fit)
+scaler = StandardScaler()
+
+X_tr = scaler.fit_transform(X_tr_imp)
+X_val = scaler.transform(X_val_imp)
+
+nn_model = tf.keras.Sequential([
+    tf.keras.Input(shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(64, activation='swish'),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(32, activation='swish'),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(1, activation = 'linear')
+])
+
+nn_model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+    loss = "mae",
+    metrics=[
+        "mae",
+        tf.keras.metrics.RootMeanSquaredError(name="rmse")
+    ]
+)
+
+callbacks = [
+    tf.keras.callbacks.EarlyStopping(
+        monitor="val_loss",
+        patience=5,
+        restore_best_weights=True
+    )
+]
+
+history = nn_model.fit(
+    X_tr,
+    y_tr,
+    validation_data=(X_val, y_val),
+    epochs=100,
+    batch_size=256,
+    verbose=1,
+    callbacks=callbacks
+)
+
+
+## Tanítás (teljes trainen)
+nn_model = tf.keras.Sequential([
+    tf.keras.Input(shape=(X_train.shape[1],)),
+    tf.keras.layers.Dense(64, activation='swish'),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(32, activation='swish'),
+    tf.keras.layers.BatchNormalization(),
+    tf.keras.layers.Dense(1, activation='linear')
+])
+
+nn_model.compile(
+    optimizer=tf.keras.optimizers.Adam(learning_rate=1e-4),
+    loss="mae"
+)
+
+imputer_full = SimpleImputer(strategy="median")
+scaler_full = StandardScaler()
+
+X_train_imp_full = imputer_full.fit_transform(X_train)
+X_train_scaled_full = scaler_full.fit_transform(X_train_imp_full)
+
+nn_model.fit(
+    X_train_scaled_full,
+    y_train_used.values,
+    epochs = np.argmin(history.history["val_loss"]) + 1,
+    batch_size=256,
+    verbose=0
+)
+
+trained_models["NeuralNet"] = NNWrapper(
+    nn_model,
+    imputer_full,
+    scaler_full
+)
+
+# --- NN evaluation ---
+nn_wrapper = trained_models["NeuralNet"]
+
+test_pred_raw = nn_wrapper.predict(X_test)
+test_pred = inverse_target(test_pred_raw)
+
+results.append({
+    "model": "NeuralNet",
+    "MAE": mean_absolute_error(y_test, test_pred),
+    "R2": r2_score(y_test, test_pred)
+})
+
+# Ensemble (ha létezik)
 if os.path.exists(ENSEMBLE_PATH):
 
     print("\nEvaluating existing ensemble...")
@@ -172,41 +276,39 @@ if os.path.exists(ENSEMBLE_PATH):
 
     preds = []
 
-    for model in ensemble_models.values():
-        p_log = model.predict(X_test)
-        p = np.maximum(0, np.expm1(p_log))
-        preds.append(p)
+    for name, model in ensemble_models.items():
+
+        pred_raw = model.predict(X_test)
+
+        pred = inverse_target(pred_raw)
+        preds.append(pred)
 
     ensemble_pred = np.mean(preds, axis=0)
 
-    mae = mean_absolute_error(y_test, ensemble_pred)
-    r2  = r2_score(y_test, ensemble_pred)
-
     results.append({
         "model": "ENSEMBLE",
-        "MAE": mae,
-        "R2": r2
+        "MAE": mean_absolute_error(y_test, ensemble_pred),
+        "R2": r2_score(y_test, ensemble_pred)
     })
 
+# Eredmények
 results_df = pd.DataFrame(results).sort_values("MAE")
+
 top_models = (
     results_df[results_df["model"] != "ENSEMBLE"]
     .head(2)["model"]
     .tolist()
 )
+
 print("Top models:", top_models)
 print(results_df)
 
-plot_df = results_df[results_df["model"] != "Ridge"]
+if PLOT:
+    results_df.set_index("model")["MAE"].plot.bar()
+    plt.title("Model comparison (MAE, without Ridge)")
+    plt.show()
 
-plot_df.set_index("model")["MAE"].plot.bar()
-plt.title("Model comparison (MAE, without Ridge)")
-plt.show()
-
-# ============================================================
-# 4. Save model
-# ============================================================
-
+# Model mentése
 best_model_name = results_df.iloc[0]["model"]
 
 if best_model_name == "ENSEMBLE":
@@ -217,6 +319,18 @@ else:
 joblib.dump(best_model, "./models/model.pkl")
 print(f"Best model = {best_model_name} saved.")
 
+# LGBM külön mentése SHAP-hoz
+for name, mdl in trained_models.items():
+
+    filename = name.lower()
+
+    joblib.dump(
+        mdl,
+        f"./models/{filename}.pkl"
+    )
+
+print("Individual models saved.")
+
 top_trained_models = {
     name: trained_models[name]
     for name in top_models
@@ -224,49 +338,3 @@ top_trained_models = {
 
 joblib.dump(top_trained_models, ENSEMBLE_PATH)
 print("Top-2 ensemble saved.")
-
-# ============================================================
-# 5. MAE
-# ============================================================
-
-print(f"\nBest model: {best_model_name}")
-
-if best_model_name == "ENSEMBLE":
-
-    # --- TRAIN ---
-    train_preds = []
-    for m in best_model.values():
-        p = np.maximum(0, np.expm1(m.predict(X_train)))
-        train_preds.append(p)
-    train_pred = np.mean(train_preds, axis=0)
-
-    # --- TEST ---
-    test_preds = []
-    for m in best_model.values():
-        p = np.maximum(0, np.expm1(m.predict(X_test)))
-        test_preds.append(p)
-    test_pred = np.mean(test_preds, axis=0)
-
-else:
-
-    # --- TRAIN ---
-    train_pred_log = best_model.predict(X_train)
-    train_pred = np.maximum(0, np.expm1(train_pred_log))
-
-    # --- TEST ---
-    test_pred_log  = best_model.predict(X_test)
-    test_pred = np.maximum(0, np.expm1(test_pred_log))
-
-    
-# --- METRICS ---
-train_mae = mean_absolute_error(y_train, train_pred)
-test_mae  = mean_absolute_error(y_test, test_pred)
-
-train_r2 = r2_score(y_train, train_pred)
-test_r2  = r2_score(y_test, test_pred)
-
-print("\n=== OVERFITTING CHECK ===")
-print(f"Train MAE: {train_mae:.3f}", "µg/m³")
-print(f"Test  MAE: {test_mae:.3f}", "µg/m³")
-print(f"Train R2 : {train_r2:.3f}")
-print(f"Test  R2 : {test_r2:.3f}")
