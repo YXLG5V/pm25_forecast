@@ -249,16 +249,33 @@ def _fetch_openweather_fallback(
         f"{len(df)}"
     )
 
-    df = df.set_index("datetime")
-
-    # ==================================================
-    # 3H -> 1H
-    # ==================================================
-
     df = (
         df
-        .resample("1h")
-        .interpolate(method="linear")
+        .sort_values("datetime")
+        .drop_duplicates(subset=["datetime"])
+        .set_index("datetime")
+    )
+
+    first_ts = df.index.min()
+    last_ts = df.index.max()
+
+    start_ts = (
+        first_ts.floor("h")
+        - pd.Timedelta(hours=2)
+    )
+
+    full_index = pd.date_range(
+        start=start_ts,
+        end=last_ts,
+        freq="1h",
+        tz="UTC"
+    )
+
+    df = df.reindex(full_index)
+
+    df = df.interpolate(
+        method="linear",
+        limit_direction="both"
     )
 
     log(
