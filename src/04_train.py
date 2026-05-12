@@ -8,6 +8,7 @@ import pandas as pd
 import numpy as np
 import joblib
 from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.model_selection import learning_curve, TimeSeriesSplit
 import matplotlib.pyplot as plt
 import os
 
@@ -27,6 +28,99 @@ def transform_target(y):
 
 def inverse_target(y):
     return np.maximum(0, np.expm1(y)) if USE_LOG_TARGET else y
+
+def plot_learning_curve(model, X, y, model_name):
+
+    cv = TimeSeriesSplit(n_splits=5)
+
+    train_sizes, train_scores, val_scores = learning_curve(
+        model,
+        X,
+        y,
+        cv=cv,
+        scoring="neg_mean_absolute_error",
+        train_sizes=np.linspace(0.1, 1.0, 10),
+        n_jobs=-1
+    )
+
+    train_mae = -train_scores.mean(axis=1)
+    val_mae = -val_scores.mean(axis=1)
+
+    plt.figure(figsize=(8,5))
+
+    plt.plot(train_sizes, train_mae, label="Train MAE")
+    plt.plot(train_sizes, val_mae, label="Validation MAE")
+
+    plt.axhline(
+        y=baseline_mae,
+        color="blue",
+        linestyle="--",
+        label=f"Lag1 baseline = {baseline_mae:.2f}"
+    )
+
+    plt.axhline(
+        y=3.0,
+        color="green",
+        linestyle="-",
+        label=f"Desired"
+    )
+
+    plt.xlabel("Training samples")
+    plt.ylabel("MAE")
+    plt.title(f"Learning Curve - {model_name}")
+
+    plt.legend()
+    plt.grid(True)
+    
+    gap = val_mae[-1] - train_mae[-1]
+
+    plt.text(
+        train_sizes[-1],
+        val_mae[-1],
+        f"Gap={gap:.2f}",
+    )
+
+    plt.show()
+
+def plot_nn_learning_curve(history):
+
+    train_mae = history.history["loss"]
+    val_mae = history.history["val_loss"]
+
+    plt.figure(figsize=(8,5))
+
+    plt.plot(train_mae, label="Train MAE")
+    plt.plot(val_mae, label="Validation MAE")
+
+    plt.axhline(
+        y=baseline_mae,
+        color="blue",
+        linestyle="--",
+        label=f"Lag1 baseline = {baseline_mae:.2f}"
+    )
+
+    plt.axhline(
+        y=3.0,
+        color="green",
+        linestyle="-",
+        label="Desired"
+    )
+
+    gap = val_mae[-1] - train_mae[-1]
+
+    plt.text(
+        len(train_mae) * 0.8,
+        val_mae[-1],
+        f"Gap={gap:.2f}"
+    )
+
+    plt.xlabel("Epoch")
+    plt.ylabel("MAE")
+    plt.title("Learning Curve - NeuralNet")
+
+    plt.legend()
+    plt.grid(True)
+    plt.show()
 
 # Adatok betöltése
 train = pd.read_parquet("./data/preprocessed/train.parquet")
@@ -78,11 +172,11 @@ print("Test :", X_test.shape)
 models = {
     "RandomForest": Pipeline([
         ("model", RandomForestRegressor(
-            n_estimators=715,
-            max_depth=16,
-            min_samples_split=9,
-            min_samples_leaf=3,
-            max_features=None,
+            n_estimators=300,
+            max_depth=6,
+            min_samples_leaf=20,
+            min_samples_split=30,
+            max_features="sqrt",
             random_state=42
         ))
     ]),
@@ -129,18 +223,39 @@ models = {
     ]),
 }
 
-print("\nTraining models...")
 results = []
 trained_models = {}
 
 # BASELINE (lag1)
 baseline_pred = X_test["pm25_lag1"]
 
+baseline_mae = mean_absolute_error(
+    y_test,
+    baseline_pred
+)
+
+baseline_r2 = r2_score(
+    y_test,
+    baseline_pred
+)
+
 results.append({
     "model": "Baseline_lag1",
-    "MAE": mean_absolute_error(y_test, baseline_pred),
-    "R2": r2_score(y_test, baseline_pred)
+    "MAE": baseline_mae,
+    "R2": baseline_r2
 })
+
+if PLOT:
+    for name, model in models.items():
+
+        plot_learning_curve(
+            model,
+            X_train,
+            y_train_used,
+            name
+        )
+
+print("\nTraining models...")
 
 # Sklearn models
 for name, model in models.items():
@@ -204,7 +319,8 @@ nn_model.compile(
 callbacks = [
     tf.keras.callbacks.EarlyStopping(
         monitor="val_loss",
-        patience=5,
+        min_delta=0.01,
+        patience=10,
         restore_best_weights=True
     )
 ]
@@ -219,6 +335,8 @@ history = nn_model.fit(
     callbacks=callbacks
 )
 
+if PLOT:
+    plot_nn_learning_curve(history)
 
 ## Tanítás (teljes trainen)
 nn_model = tf.keras.Sequential([
