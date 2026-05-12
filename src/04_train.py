@@ -29,6 +29,49 @@ def transform_target(y):
 def inverse_target(y):
     return np.maximum(0, np.expm1(y)) if USE_LOG_TARGET else y
 
+def plot_curve(
+    x,
+    train_values,
+    val_values,
+    model_name,
+    xlabel
+):
+
+    plt.figure(figsize=(8,5))
+
+    plt.plot(x, train_values, label="Train MAE")
+    plt.plot(x, val_values, label="Validation MAE")
+
+    plt.axhline(
+        y=baseline_mae,
+        color="blue",
+        linestyle="--",
+        label=f"Lag1 baseline = {baseline_mae:.2f}"
+    )
+
+    plt.axhline(
+        y=3.0,
+        color="green",
+        linestyle="-",
+        label="Desired"
+    )
+
+    gap = val_values[-1] - train_values[-1]
+
+    plt.text(
+        x[-1],
+        val_values[-1],
+        f"Gap={gap:.2f}"
+    )
+
+    plt.xlabel(xlabel)
+    plt.ylabel("MAE")
+    plt.title(f"Learning Curve - {model_name}")
+
+    plt.legend()
+    plt.grid(True)
+    plt.show()
+
 def plot_learning_curve(model, X, y, model_name):
 
     cv = TimeSeriesSplit(n_splits=5)
@@ -46,81 +89,28 @@ def plot_learning_curve(model, X, y, model_name):
     train_mae = -train_scores.mean(axis=1)
     val_mae = -val_scores.mean(axis=1)
 
-    plt.figure(figsize=(8,5))
-
-    plt.plot(train_sizes, train_mae, label="Train MAE")
-    plt.plot(train_sizes, val_mae, label="Validation MAE")
-
-    plt.axhline(
-        y=baseline_mae,
-        color="blue",
-        linestyle="--",
-        label=f"Lag1 baseline = {baseline_mae:.2f}"
+    plot_curve(
+        x=train_sizes,
+        train_values=train_mae,
+        val_values=val_mae,
+        model_name=model_name,
+        xlabel="Training samples"
     )
-
-    plt.axhline(
-        y=3.0,
-        color="green",
-        linestyle="-",
-        label=f"Desired"
-    )
-
-    plt.xlabel("Training samples")
-    plt.ylabel("MAE")
-    plt.title(f"Learning Curve - {model_name}")
-
-    plt.legend()
-    plt.grid(True)
-    
-    gap = val_mae[-1] - train_mae[-1]
-
-    plt.text(
-        train_sizes[-1],
-        val_mae[-1],
-        f"Gap={gap:.2f}",
-    )
-
-    plt.show()
 
 def plot_nn_learning_curve(history):
 
     train_mae = history.history["loss"]
     val_mae = history.history["val_loss"]
 
-    plt.figure(figsize=(8,5))
+    epochs = range(1, len(train_mae) + 1)
 
-    plt.plot(train_mae, label="Train MAE")
-    plt.plot(val_mae, label="Validation MAE")
-
-    plt.axhline(
-        y=baseline_mae,
-        color="blue",
-        linestyle="--",
-        label=f"Lag1 baseline = {baseline_mae:.2f}"
+    plot_curve(
+        x=list(epochs),
+        train_values=train_mae,
+        val_values=val_mae,
+        model_name="NeuralNet",
+        xlabel="Epoch"
     )
-
-    plt.axhline(
-        y=3.0,
-        color="green",
-        linestyle="-",
-        label="Desired"
-    )
-
-    gap = val_mae[-1] - train_mae[-1]
-
-    plt.text(
-        len(train_mae) * 0.8,
-        val_mae[-1],
-        f"Gap={gap:.2f}"
-    )
-
-    plt.xlabel("Epoch")
-    plt.ylabel("MAE")
-    plt.title("Learning Curve - NeuralNet")
-
-    plt.legend()
-    plt.grid(True)
-    plt.show()
 
 # Adatok betöltése
 train = pd.read_parquet("./data/preprocessed/train.parquet")
@@ -172,11 +162,11 @@ print("Test :", X_test.shape)
 models = {
     "RandomForest": Pipeline([
         ("model", RandomForestRegressor(
-            n_estimators=300,
-            max_depth=6,
-            min_samples_leaf=20,
-            min_samples_split=30,
-            max_features="sqrt",
+            n_estimators=715,
+            max_depth=16,
+            min_samples_split=9,
+            min_samples_leaf=3,
+            max_features=None,
             random_state=42
         ))
     ]),
@@ -195,12 +185,15 @@ models = {
 
     "LGBM": Pipeline([
         ("model", LGBMRegressor(
-            n_estimators=723,
-            learning_rate=0.012885472793169907,
-            max_depth=11,
-            num_leaves=71,
-            subsample=0.6904437214202783,
-            colsample_bytree=0.6924371848724423,
+            n_estimators=400,
+            learning_rate=0.03,
+            max_depth=6,
+            num_leaves=31,
+            subsample=0.8,
+            colsample_bytree=0.8,
+            min_child_samples=50,
+            reg_alpha=0.5,
+            reg_lambda=1.0,
             random_state=42
         ))
     ]),
