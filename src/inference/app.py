@@ -21,7 +21,7 @@ app = FastAPI()
 # =========================================================
 
 class ForecastRequest(BaseModel):
-    location_name: str = "Gyor Szent Istvan"
+    location_name: str = "Győr - Ifjúság krt."
     horizon: int = 12
 
 
